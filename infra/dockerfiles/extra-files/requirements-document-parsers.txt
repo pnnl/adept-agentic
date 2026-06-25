@@ -1,0 +1,16 @@
+# Document parsing and office format libraries (pip venv)
+# Used by sandbox_mcp_server for extracting text/tables from office documents
+# Pinned to exact versions for supply chain security (#104)
+
+# --- Office document formats ---
+python-pptx==1.0.2
+python-docx==1.1.2
+openpyxl==3.1.5
+odfpy==1.4.1
+xlrd==2.0.2
+
+# --- PDF extraction ---
+pdfplumber==0.11.9
+
+# --- AWS data access ---
+awswrangler==3.16.1

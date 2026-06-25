@@ -1,0 +1,34 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Author ADEPT Platform Team
+    Description COBRApy/Gurobi FBA runtime for Deception HPC
+    Version 1.0
+
+%files
+    requirements.txt /opt/adept/requirements.txt
+
+%post
+    apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        libgfortran5 \
+        libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+
+    pip install --no-cache-dir --upgrade pip
+    pip install --no-cache-dir -r /opt/adept/requirements.txt
+
+    python3 -c "import cobra; print(f'cobra {cobra.__version__} OK')"
+    python3 -c "import gurobipy; print(f'gurobipy OK')"
+
+%environment
+    export GRB_LICENSE_FILE=/share/apps/gurobi/gurobi1202/linux64/gurobi.lic
+    export GUROBI_HOME=/share/apps/gurobi/gurobi1202/linux64
+    export PYTHONUNBUFFERED=1
+
+%runscript
+    exec python3 "$@"
+
+%test
+    python3 -c "import cobra; import gurobipy; import numpy; print('All imports OK')"

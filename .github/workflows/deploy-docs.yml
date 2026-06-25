@@ -1,0 +1,45 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/public-site/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r docs/public-site/requirements.txt
+
+      - name: Validate content safety
+        working-directory: docs/public-site
+        run: |
+          # Check for internal-only patterns across all publishable content
+          if grep -rniE "(pnnl-int|pnl\.gov|\.pnnl\.gov|130\.20\.|10\.15\.|516993|rc-aws|emsl-aws|/data/workspace)" docs/ mkdocs.yml; then
+            echo "::error::Sensitive content detected in documentation"
+            exit 1
+          fi
+
+      - name: Build site
+        working-directory: docs/public-site
+        run: mkdocs build --strict
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/public-site/site

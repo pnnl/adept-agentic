@@ -1,0 +1,35 @@
+# infra/dockerfiles/Dockerfile.deps-base
+ARG OS_BASE_IMAGE=agentic-framework-os-base:latest
+FROM ${OS_BASE_IMAGE}
+
+# Install Node.js (required for AWS CDK testing)
+# Switch back to root temporarily to install system packages
+USER root
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g aws-cdk && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Switch to non-root user BEFORE any file operations
+# This ensures all created files are owned by appuser:appgroup
+USER appuser
+
+# 1. Copy project definition files with explicit ownership
+COPY --chown=appuser:appgroup pyproject.toml uv.lock* ./
+
+# 2. Generate requirements.txt from pyproject.toml inside the container.
+RUN uv pip compile pyproject.toml --all-extras --no-header -o requirements.txt
+
+# 3. Install all dependencies into a virtual environment from the generated requirements file.
+RUN mkdir -p /app /app/config
+RUN uv venv /app/.venv -p 3.11
+RUN uv pip sync requirements.txt
+# Remove: RUN uv pip install yt-dlp openai-whisper to avoid installing these globally in the base image
+
+# 4. Set the PATH to include the venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Note: No chown needed - all files created as appuser from the start!

@@ -1,0 +1,67 @@
+# values-local.yaml - Overrides for local minikube/kind development
+
+# Disable ingress for local development
+ingress:
+  enabled: false
+
+# Use default images without registry prefix
+redis:
+  image:
+    repository: redis
+    tag: 7-alpine
+
+mcpServer:
+  image:
+    repository: {{NAME}}-mcp-server
+    tag: latest
+  service:
+    type: NodePort
+    nodePort: {{MCP_PORT}}
+
+nginx:
+  image:
+    repository: nginx
+    tag: alpine
+  service:
+    type: NodePort
+    nodePort: {{PROXY_HTTP_PORT}}
+
+# No image pull secrets needed for local development
+imagePullSecrets: []
+
+# Use smaller resource limits for local development
+redis:
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 250m
+    requests:
+      memory: 128Mi
+      cpu: 100m
+
+mcpServer:
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 500m
+    requests:
+      memory: 512Mi
+      cpu: 250m
+
+nginx:
+  resources:
+    limits:
+      memory: 128Mi
+      cpu: 100m
+    requests:
+      memory: 64Mi
+      cpu: 50m
+
+# Use smaller persistent volumes for local development
+persistence:
+  sharedUploads:
+    enabled: true
+    size: 5Gi
+  {{NAME}}Results:
+    enabled: true
+    size: 10Gi

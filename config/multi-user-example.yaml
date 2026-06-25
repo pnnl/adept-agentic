@@ -1,0 +1,37 @@
+# Multi-User Service Configuration
+# This file defines which users/tenants get service API keys for each service
+
+services:
+  openwebui:
+    description: "OpenWebUI service API keys"
+    users:
+      - "admin"
+      - "data_scientist_team"
+      - "research_group_a" 
+      - "research_group_b"
+      - "external_collaborator_1"
+      - "demo_user"
+    permissions:
+      - "gateway-agents"
+      - "openwebui-users"
+      
+  n8n:
+    description: "N8N workflow service API keys"
+    users:
+      - "workflow_admin"
+      - "automation_team"
+      - "data_pipeline_team"
+      - "external_integrator"
+    permissions:
+      - "gateway-agents"
+      - "n8n-users"
+      
+  # Future services can be added here
+  streamlit:
+    description: "Streamlit dashboard service API keys"
+    users:
+      - "dashboard_admin"
+      - "viewer_team"
+    permissions:
+      - "gateway-agents"
+      - "streamlit-users"

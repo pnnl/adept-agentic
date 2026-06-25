@@ -1,0 +1,48 @@
+# docker-compose.tests-final.yaml
+# This file defines the service for running the end-to-end test suite.
+# It is designed to attach to an existing network where the core services are already running.
+
+services:
+  tests-runner:
+    # This service is responsible for running the pytest e2e suite.
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.tests
+    image: agentic-framework-e2e-tests:latest
+    container_name: tests-runner
+    profiles:
+      - tests
+      - bootstrap-task
+    
+    # Attaches the test runner to the pre-existing application network.
+    networks:
+      - agentic_network
+      
+    # This service depends on the keycloak-setup service completing successfully.
+    depends_on:
+      keycloak-setup:
+        condition: service_completed_successfully
+      agent_gateway:
+        condition: service_healthy
+        
+    # The test runner needs access to the .env file for general configuration
+    # and the generated credentials file for authentication tokens.
+    env_file:
+      - .env
+      - .env-keycloak-credentials-dir/.env-keycloak-credentials
+      
+    # We override specific environment variables to ensure the test container
+    # can correctly resolve the services on the Docker network using their service names.
+    environment:
+      - AGENT_GATEWAY_URL=http://agent_gateway:8081/v1
+      - KEYCLOAK_URL=http://keycloak:8180
+      - AGENT_GATEWAY_AUTH_ENABLED=true
+      - AGENT_GATEWAY_CLIENT_ID=${AGENT_GATEWAY_CLIENT_ID}
+      - AGENT_GATEWAY_CLIENT_SECRET=${AGENT_GATEWAY_CLIENT_SECRET}
+      
+    # The default command is already set to run pytest in the Dockerfile.
+    command: ["pytest", "-v", "tests/e2e/test_agent_flows.py"]
+
+  # agent_gateway:
+  #   networks:
+  #     - agentic_network

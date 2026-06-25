@@ -1,0 +1,7 @@
+---
+# Azure-specific validation tasks
+# Placeholder for future Azure deployment validation
+
+- name: Azure validation placeholder
+  debug:
+    msg: "Azure validation not yet implemented. Coming in Phase 3."

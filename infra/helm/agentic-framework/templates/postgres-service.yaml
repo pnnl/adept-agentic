@@ -1,0 +1,20 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-postgres
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: {{ .Values.postgres.service.type }}
+  ports:
+    - port: {{ .Values.postgres.service.port }}
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "agentic-framework.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+{{- end }}

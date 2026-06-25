@@ -1,0 +1,20 @@
+# MinIO for Langfuse - Internalized Image
+# This Dockerfile internalizes the MinIO image for consistent artifact management
+
+# Use latest stable MinIO release (November 2024)
+# FROM minio/minio:RELEASE.2024-11-17T14-29-10Z
+FROM minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+
+# Metadata
+LABEL maintainer="paul.rigor@pnnl.gov"
+LABEL description="Internalized MinIO for Langfuse observability object storage"
+LABEL version="RELEASE.2024-11-17"
+
+# No modifications currently needed - this is for image standardization
+# Future customizations can be added here:
+# - Custom MinIO configurations
+# - Bucket policies
+# - Security hardening
+# - Backup configurations
+
+# The entrypoint and CMD are inherited from the base image

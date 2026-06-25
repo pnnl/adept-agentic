@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+# Generated TLS certificates (keep .gitkeep)
+certs/*.key
+certs/*.crt
+certs/*.csr
+certs/*.srl
+certs/*.ext

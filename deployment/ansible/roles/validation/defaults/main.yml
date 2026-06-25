@@ -1,0 +1,9 @@
+---
+# Default variables for validation role
+
+# Validation timeout (seconds)
+validation_timeout: 300
+
+# Retry settings
+validation_retries: 3
+validation_delay: 10

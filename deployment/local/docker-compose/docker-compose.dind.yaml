@@ -1,0 +1,27 @@
+# docker-compose.dind.yaml
+# Optional override: enables Docker-in-Docker execution for sandbox_mcp_server.
+#
+# SECURITY WARNING: Mounting the Docker socket enables FULL privilege escalation.
+# Any code executed in the sandbox can read ALL container secrets via docker inspect.
+# Only use this when DinD isolation is required AND you accept this risk.
+#
+# Usage:
+#   docker compose -f docker-compose.base.yaml -f docker-compose.core.yaml -f docker-compose.dind.yaml up -d
+#
+# Prerequisites:
+#   - Set EXECUTION_METHOD=docker-in-docker in .env
+#   - Set SANDBOX_PRIVILEGED=true in .env
+#
+# Recommended: Use a Docker socket proxy instead of raw mount (see docs/security/SANDBOX_EXECUTION_METHOD_SECURITY.md)
+#
+# Compensating controls for this configuration:
+#   CC-SANDBOX-01: Network egress allowed (PNNL license servers, HPC)
+#   CC-SANDBOX-02: No nsjail (defense-in-depth layers mitigate)
+#
+# Reference: docs/security/SANDBOX_EXECUTION_METHOD_SECURITY.md §2 (DinD risks), §7 (compensating controls)
+
+services:
+  sandbox_mcp_server:
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -1,0 +1,138 @@
+# Minimal NGINX configuration to test basic functionality
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name api.agentic.local localhost;
+
+    # SSL configuration
+    ssl_certificate /etc/nginx/certs/api.agentic.local.crt;
+    ssl_certificate_key /etc/nginx/certs/api.agentic.local.key;
+    
+    # Basic SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # NGINX self-health check (independent of upstream services)
+    location /health {
+        access_log off;
+        return 200 "nginx-proxy healthy\n";
+        add_header Content-Type text/plain;
+    }
+    
+    # Upstream services health aggregation (placeholder - to be implemented)
+    location /health/services {
+        access_log off;
+        return 200 "Upstream services health check - not yet implemented\n";
+        add_header Content-Type text/plain;
+    }
+
+    # Authentication routes - Keycloak
+    location /auth/ {
+        limit_req zone=auth burst=10 nodelay;
+        
+        proxy_pass http://keycloak;
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Connection settings
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+        
+        # Handle Keycloak redirects properly
+        proxy_redirect ~^http://[^/]+/(.*) https://$host/$1;
+    }
+
+    # API routes - Agent Gateway
+    location /v1/ {
+        limit_req zone=api burst=20 nodelay;
+        
+        proxy_pass http://agent_gateway;
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Connection settings
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+        
+        # Pass through authentication headers
+        proxy_pass_header Authorization;
+        
+        # Handle file uploads
+        client_max_body_size 1G;
+        proxy_request_buffering off;
+        
+        # WebSocket support for streaming responses
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # Direct orchestration service access (for debugging)
+    location /orchestration/ {
+        limit_req zone=api burst=20 nodelay;
+        
+        proxy_pass http://orchestration_service/;
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Connection settings
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+        
+        proxy_pass_header Authorization;
+    }
+
+    # Default location
+    location / {
+        return 404 '{"error": "Not Found"}';
+        add_header Content-Type application/json;
+    }
+}
+
+# HTTP server for health checks and redirects
+server {
+    listen 80;
+    server_name api.agentic.local localhost;
+    
+    # NGINX self-health check (no redirect, independent of upstream services)  
+    location /health {
+        access_log off;
+        return 200 "nginx-proxy healthy (http)\n";
+        add_header Content-Type text/plain;
+    }
+    
+    # Upstream services health (redirect to HTTPS)
+    location /health/services {
+        return 301 https://$server_name$request_uri;
+    }
+    
+    # All other requests redirect to HTTPS  
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
+}

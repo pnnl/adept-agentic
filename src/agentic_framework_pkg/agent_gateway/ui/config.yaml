@@ -1,0 +1,9 @@
+keycloak:
+  url: http://keycloak:8180 # Internal network address for Keycloak
+  realm: master
+  admin_user: admin
+  admin_password: admin
+  admin_cli_secret: ""  # Set via KC_ADMIN_CLI_SECRET env var (see .env.example)
+
+agent_gateway:
+  api_url: http://agent_gateway:8081 # Internal network address for agent_gateway

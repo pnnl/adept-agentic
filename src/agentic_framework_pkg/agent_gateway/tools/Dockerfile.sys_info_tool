@@ -1,0 +1,12 @@
+# Use a lightweight Python base image
+FROM python:3.11-alpine
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy the tool script into the container
+COPY sys_info_tool.py .
+
+# The command that will be executed when the container starts.
+# It runs our Python script.
+CMD ["python", "./sys_info_tool.py"]

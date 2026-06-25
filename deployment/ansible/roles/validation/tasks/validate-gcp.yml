@@ -1,0 +1,7 @@
+---
+# GCP-specific validation tasks
+# Placeholder for future GCP deployment validation
+
+- name: GCP validation placeholder
+  debug:
+    msg: "GCP validation not yet implemented. Coming in future phase."

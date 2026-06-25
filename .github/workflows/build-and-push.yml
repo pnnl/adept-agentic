@@ -1,0 +1,103 @@
+# .github/workflows/build-and-push.yml
+name: Build and Push Docker Images
+
+on:
+  workflow_call:
+    inputs:
+      registry_server:
+        required: true
+        type: string
+      registry_username:
+        required: true
+        type: string
+      registry_password:
+        required: true
+        type: string
+    secrets:
+      REGISTRY_PASSWORD:
+        required: true
+
+jobs:
+  build-base-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Log in to container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ inputs.registry_server }}
+          username: ${{ inputs.registry_username }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build and push os-base
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./infra/dockerfiles/Dockerfile.os-base
+          push: true
+          tags: ${{ inputs.registry_server }}/agentic-framework-os-base:latest
+      - name: Build and push deps-base
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./infra/dockerfiles/Dockerfile.deps-base
+          push: true
+          tags: ${{ inputs.registry_server }}/agentic-framework-deps-base:latest
+
+  build-bootstrap-image:
+    needs: build-base-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Log in to container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ inputs.registry_server }}
+          username: ${{ inputs.registry_username }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build and push bootstrap image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./infra/dockerfiles/Dockerfile.bootstrap
+          push: true
+          tags: ${{ inputs.registry_server }}/agentic-framework-bootstrap:latest
+
+  build-and-push-services:
+    needs: build-base-images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - mcp_server
+          - streamlit_app
+          - hpc_mcp_server
+          - sandbox_mcp_server
+          - agent_gateway
+          - agent_gateway_mgmt_ui
+          - jupyterlab
+          - vector_db_server
+          - keycloak
+          - redis
+          - n8n
+          - openwebui
+          - gateway_registry
+          - orchestration_service
+          - postgres
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Log in to container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ inputs.registry_server }}
+          username: ${{ inputs.registry_username }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./infra/dockerfiles/Dockerfile.${{ matrix.service }}
+          push: true
+          tags: ${{ inputs.registry_server }}/agentic-framework-${{ matrix.service }}:latest

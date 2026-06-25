@@ -1,0 +1,18 @@
+# ClickHouse for Langfuse - Internalized Image
+# This Dockerfile internalizes the ClickHouse image for consistent artifact management
+
+FROM clickhouse/clickhouse-server:24.8-alpine
+
+# Metadata
+LABEL maintainer="paul.rigor@pnnl.gov"
+LABEL description="Internalized ClickHouse for Langfuse observability backend"
+LABEL version="24.8-alpine"
+
+# No modifications currently needed - this is for image standardization
+# Future customizations can be added here:
+# - Custom configurations for ADEPT workloads
+# - Performance tuning
+# - Security hardening
+# - Backup configurations
+
+# The entrypoint and CMD are inherited from the base image

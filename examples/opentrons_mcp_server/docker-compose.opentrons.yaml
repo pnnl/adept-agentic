@@ -1,0 +1,44 @@
+# Docker Compose for OpenTrons MCP Server
+#
+# Optional service — start on hosts that provide OpenTrons capability.
+# NOT part of core.yaml. Start separately:
+#
+#   docker compose -f examples/opentrons_mcp_server/docker-compose.opentrons.yaml up -d --build
+#
+# Prerequisites:
+#   - adept_application_network must exist (created by core stack)
+#
+# Usage:
+#   # Build and start
+#   docker compose -f examples/opentrons_mcp_server/docker-compose.opentrons.yaml up -d --build
+#
+#   # Check health
+#   curl http://localhost:9003/health
+#
+#   # Stop and remove
+#   docker compose -f examples/opentrons_mcp_server/docker-compose.opentrons.yaml down
+
+services:
+  opentrons_mcp_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opentrons_mcp_server
+    ports:
+      - "9003:9003"
+    environment:
+      - OPENTRONS_HARDWARE_MODE=simulation
+      - MCP_SERVER_PORT=9003
+    networks:
+      - adept_application_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  adept_application_network:
+    external: true

@@ -1,0 +1,6 @@
+# CPU-only overlay (no GPU resources)
+# Usage: docker compose -f docker-compose.yaml -f docker-compose.cpu.yaml up -d
+services:
+  {{NAME}}_mcp_server:
+    environment:
+      {{NAME_UPPER}}_DEVICE: "cpu"

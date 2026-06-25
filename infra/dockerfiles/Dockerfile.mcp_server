@@ -1,0 +1,22 @@
+# infra/dockerfiles/Dockerfile.mcp_server
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+FROM ${DEPS_BASE_IMAGE}
+
+# Stay as root only for entrypoint script install
+USER root
+
+# 1. Copy and prepare the entrypoint script
+COPY --chown=root:root scripts/mcp-server-entrypoint.sh /usr/local/bin/mcp-server-entrypoint.sh
+RUN chmod +x /usr/local/bin/mcp-server-entrypoint.sh
+
+# 2. Switch to appuser for code copy and install
+USER appuser
+
+COPY --chown=appuser:appgroup src/ ./src/
+RUN uv pip install --no-cache-dir --editable .
+
+# 3. Runtime as appuser (entrypoint no longer needs root)
+# Host-side quick-start script handles data directory permissions.
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/mcp-server-entrypoint.sh"]
+CMD ["/app/.venv/bin/python", "-m", "agentic_framework_pkg.mcp_server.main"]

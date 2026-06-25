@@ -1,0 +1,15 @@
+# infra/dockerfiles/Dockerfile.postgres
+# Use the user-specified PostgreSQL version 15
+FROM postgres:15
+
+# The official postgres image will automatically run any .sh scripts
+# placed in the /docker-entrypoint-initdb.d/ directory upon initialization
+RUN mkdir -p /docker-entrypoint-initdb.d/
+COPY ./scripts/deps/init-multiple-dbs-enhanced.sh /docker-entrypoint-initdb.d/
+RUN chown -R postgres /docker-entrypoint-initdb.d/
+RUN chmod a+x -R /docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/init-multiple-dbs-enhanced.sh
+
+RUN mkdir -p /app/scripts && chmod a+sx -R /app/scripts
+COPY ./scripts/deps/wait_for_postgres.py /app/scripts/wait_for_postgres.py
+RUN chown -R postgres /app/scripts
+RUN chmod a+x /app/scripts/wait_for_postgres.py

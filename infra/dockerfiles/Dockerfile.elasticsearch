@@ -1,0 +1,28 @@
+# infra/dockerfiles/Dockerfile.elasticsearch
+# Custom Elasticsearch image with consistent UID/GID for shared volume access
+FROM docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+
+# Create appuser with specific UID/GID 1000 to match other services
+# Note: Elasticsearch runs as 'elasticsearch' user (UID 1000) by default,
+# but we need to ensure group consistency
+USER root
+
+# Create appgroup with GID 1000 if it doesn't exist
+RUN groupadd -g 1000 -f appgroup || true
+
+# Add elasticsearch user to appgroup for shared volume access
+RUN usermod -aG appgroup elasticsearch
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/data/ragflow && \
+    chown -R elasticsearch:appgroup /app/data/ragflow && \
+    chmod 2775 /app/data/ragflow
+
+# Ensure elasticsearch data directory has proper permissions
+RUN chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data && \
+    chmod 775 /usr/share/elasticsearch/data
+
+# Switch back to elasticsearch user
+USER elasticsearch
+
+# The rest of the configuration is handled via environment variables in docker-compose

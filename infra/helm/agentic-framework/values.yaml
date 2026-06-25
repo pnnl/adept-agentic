@@ -1,0 +1,293 @@
+# values.yaml
+# Default values for agentic-framework.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# -- The namespace where all Kubernetes resources will be deployed.
+namespace: default # Set your target namespace for the Helm release
+
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Global values that can be inherited by all services
+global:
+  image:
+    pullPolicy: Always # Use 'Never' for local dev, 'Always' for production; switched to Always for rzr/emsl deployments
+    tag: "latest"
+  # -- Proxy configuration for outbound HTTP/HTTPS requests
+  proxy:
+    # -- HTTP proxy server URL (e.g., http://proxy.example.com:8080)
+    httpProxy: "http://proxy.example.com:3128"
+    # -- HTTPS proxy server URL (e.g., http://proxy.example.com:8080)
+    httpsProxy: "http://proxy.example.com:3128"
+    # -- List of hosts, domains, and IP addresses that should bypass the proxy.
+    # The Helm chart will automatically add the internal Kubernetes service names to this list.
+    # Suffixes should start with a dot (e.g., .svc, .cluster.local).
+    # Customize noProxy for your environment (internal domains, cluster DNS, etc.)
+    noProxy:
+      - localhost
+      - 127.0.0.1
+      - .example.com
+      - .example.org
+      - .svc
+      - .cluster.local
+      - 10.17.0.0/16
+      - mcp_server
+      - streamlit_app_v2
+      - hpc_mcp_server
+      - sandbox_mcp_server
+
+# -- Configuration for Kubernetes image pull secrets.
+# This secret must be created manually in the target namespace (e.g., 'class').
+# Example command:
+# kubectl create secret docker-registry my-registry-secret \
+#   --docker-server=your-registry.example.com \
+#   --docker-username=<your-username> \
+#   --docker-password=<your-password> \
+#   --docker-email=<your-email> \
+#   --namespace class
+imagePullSecrets: # <--- NEW SECTION FOR IMAGE PULL SECRETS
+  - name: my-registry-secret # Name of the Kubernetes secret (e.g., 'my-registry-secret')
+
+# -- Secret values for the application.
+# It is strongly recommended to manage secrets outside of values.yaml.
+# For production, use a pre-existing secret or a tool like External Secrets Operator.
+secrets:
+  # -- Create a new secret resource. If false, you must provide an existingSecretName.
+  create: true
+  # -- Name of an existing secret to use. If create is false, this is the name of the secret
+  # that the CSI driver will create and that the deployments will mount.
+  existingSecretName: "agentic-framework-secrets"
+  # -- Configuration for the CSI Secrets Store driver. This is only used if create=false.
+  csi:
+    # -- The provider for the CSI driver (e.g., 'azure', 'aws', 'gcp').
+    provider: ""
+    # -- Provider-specific parameters.
+    # See https://secrets-store-csi.driver.x-k8s.io/provider-secret-provider-class/
+    parameters: {}
+    # -- A list of secret objects to mount from the provider into the Kubernetes secret.
+    secretObjects: []
+  # -- API keys and other sensitive data. These will be base64 encoded by Helm if create=true.
+  # Example:
+  # OPENAI_API_KEY: "sk-..."
+  # AZURE_API_KEY: "..."
+  data: {}
+
+# -- YAML LLM Configuration (opt-in)
+# When enabled, mounts a ConfigMap containing llm.yaml to /app/config/llm.yaml
+# and sets LLM_CONFIG_PATH env var on all LLM-consuming services.
+# The ConfigMap should contain the llm.yaml content (use *_env credential pattern).
+llmConfig:
+  enabled: false
+  # -- Path inside the container where llm.yaml is mounted
+  mountPath: "/app/config/llm.yaml"
+  # -- Name of the ConfigMap containing llm.yaml (create separately)
+  configMapName: ""
+  # -- Key within the ConfigMap that holds the YAML content
+  configMapKey: "llm.yaml"
+
+# -- Configuration for the main MCP server
+mcp_server:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-mcp_server # <--- UPDATED REPOSITORY
+  service:
+    type: ClusterIP
+    port: 8080
+
+# -- Configuration for the Streamlit UI application (v2 — primary UI)
+streamlit_app_v2:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-streamlit_app_v2
+  service:
+    type: ClusterIP
+    port: 8503
+
+# -- Configuration for the HPC MCP server
+hpc_mcp_server:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-hpc_mcp_server # <--- UPDATED REPOSITORY
+  service:
+    type: ClusterIP
+    port: 8081
+
+# -- Configuration for the Sandbox MCP server
+sandbox_mcp_server:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-sandbox_mcp_server # <--- UPDATED REPOSITORY
+  service:
+    type: ClusterIP
+    port: 8082
+  # -- Backend for code execution. Options: "kubernetes" or "docker".
+  # "kubernetes": Executes code in ephemeral pods. Requires RBAC permissions. More secure for clusters.
+  # "docker": Uses Docker-out-of-Docker. Requires privileged mode and mounting the host's docker socket. Simpler for local dev.
+  backend: "kubernetes" # <-- SET THIS TO "docker" FOR YOUR LOCAL DOCKER DESKTOP SETUP
+
+  # -- Settings for the 'docker' backend. These are ignored if backend is 'kubernetes'.
+  dockerBackend:
+    # -- CRITICAL: Required for llm-sandbox (nsjail) to function with the docker backend.
+    # This grants the container extended privileges on the host machine.
+    # Understand the security implications before enabling this in production.
+    privileged: true
+    # -- Path to the Docker socket on the host machine.
+    socketPath: "/var/run/docker.sock"
+
+  # -- NetworkPolicy for sandbox isolation (mirrors Docker Compose network isolation, #104).
+  # Requires a CNI that enforces NetworkPolicy (Calico, Cilium, or AWS VPC CNI with policy agent).
+  # Without an enforcing CNI, the NetworkPolicy resource is created but has no effect.
+  networkPolicy:
+    # -- Enable NetworkPolicy to restrict sandbox ingress/egress.
+    enabled: true
+    # -- External hosts allowed for egress (IP-based — NetworkPolicy cannot use DNS names).
+    # Resolve hostnames to IPs at deploy time. Use /32 CIDR for specific hosts.
+    egressAllowlist: []
+    # Example (mirrors config/sandbox_egress_allowlist.yaml):
+    # - cidr: "<your-license-server-ip>/32"  # your license server hostname
+    #   ports:
+    #     - port: 41954
+    #       protocol: TCP
+    #     - port: 443
+    #       protocol: TCP
+
+# -- Configuration for the Orchestration Service
+orchestration_service:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-orchestration_service
+  service:
+    type: ClusterIP
+    port: 8084
+
+# -- Configuration for PostgreSQL
+postgres:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-postgres
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5432
+  db: agentic_orchestrator
+  user: admin
+  password: "" # This should be set in a secret
+  persistence:
+    enabled: true
+    storageClassName: "mscmsc-nfs"
+    accessMode: ReadWriteOnce
+    size: 5Gi
+
+
+# -- Configuration for the Gateway Registry
+gateway_registry:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-gateway-registry # <--- UPDATED REPOSITORY
+  service:
+    type: ClusterIP
+    port: 8086
+
+# -- Configuration for the Agent Gateway
+agentGateway:
+  # -- A unique, human-readable alias for this gateway instance.
+  alias: "gateway-a"
+  # -- The public-facing URL for this gateway. This is typically set by the Ingress.
+  # It will be dynamically constructed in the deployment template if left empty.
+  publicUrl: ""
+
+keycloak:
+  enabled: true
+  image:
+    repository: your-registry.example.com/agentic-framework/agentic_framework-keycloak
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  admin:
+    user: "admin"
+    password: "" # This should be set in a secret
+  realm: "master"
+  clients:
+    - name: "gateway-client"
+      secretName: "gateway-client-secret"
+    - name: "gateway-registry-client"
+      secretName: "gateway-registry-client-secret"
+    - name: "mgmt-ui-client"
+      secretName: "mgmt-ui-client-secret"
+  setupJob:
+    enabled: true
+    tutorialUser:
+      username: "notebook-user"
+      group: "notebook-users"
+
+# -- Ingress configuration for exposing the Streamlit UI
+ingress:
+  enabled: true
+  className: "nginx" #
+  annotations: 
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    # For AWS ALB Ingress Controller:
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m" # Increase body size limit for file uploads
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300" # Increase read timeout for long-running requests
+  hosts:
+    - host: agentic.example.com #chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: 
+   - secretName: default-tls
+     hosts:
+       - agentic.example.com
+
+# -- Persistence configuration using PersistentVolumeClaims
+persistence:
+  # -- Shared data volume for SQLite, ChromaDB, etc.
+  data:
+    enabled: true
+    # -- For AWS EKS, use a StorageClass like 'efs-sc' that supports ReadWriteMany.
+    # For local dev, this can be omitted to use the default provisioner.
+    storageClassName: "mscmsc-nfs"
+    accessMode: ReadWriteOnce
+    size: 5Gi
+  # -- Shared volume for file uploads between services
+  shared_uploads:
+    enabled: true
+    storageClassName: "mscmsc-nfs"
+    accessMode: ReadWriteOnce
+    size: 5Gi # 10Gi
+  # -- Volume for BLAST databases for the HPC server
+  blast_databases:
+    enabled: true
+    # -- Use a ReadWriteMany StorageClass if multiple HPC pods might run.
+    # For a single pod, ReadWriteOnce is sufficient.
+    storageClassName: "mscmsc-nfs"
+    accessMode: ReadWriteOnce
+    size: 5Gi #50Gi
+
+# -- Resource requests and limits for the containers
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts will run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -1,0 +1,5 @@
+name: agentic-framework-azure
+runtime: python
+description: Azure infrastructure for the Agentic Framework on AKS
+backend:
+  url: file://~

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal SBML Level 3 Version 1 model for ADEPT COBRApy demo.
+  Represents a simple linear pathway with 5 reactions:
+    EX_glc: -> glucose_c  (exchange, uptake bounded at 10)
+    HEX1:   glucose_c -> g6p_c  (hexokinase)
+    PFK:    g6p_c -> fdp_c  (phosphofructokinase)
+    FBA_rxn: fdp_c -> g3p_c + dhap_c  (fructose-bisphosphate aldolase)
+    BIOMASS: g3p_c + dhap_c ->  (biomass objective)
+
+  Expected FBA result: optimal_value = 10.0 (bounded by glucose uptake)
+
+  This file can be loaded with: cobra.io.read_sbml_model("simple_pathway.xml")
+-->
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core"
+      xmlns:fbc="http://www.sbml.org/sbml/level3/version1/fbc/version2"
+      level="3" version="1" fbc:required="false">
+  <model id="simple_pathway_demo" name="ADEPT Simple Pathway Demo" fbc:strict="true">
+    <listOfCompartments>
+      <compartment id="c" name="cytosol" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="glucose_c" name="Glucose" compartment="c" boundaryCondition="false"
+               hasOnlySubstanceUnits="false" constant="false"
+               fbc:charge="0" fbc:chemicalFormula="C6H12O6"/>
+      <species id="g6p_c" name="Glucose-6-phosphate" compartment="c" boundaryCondition="false"
+               hasOnlySubstanceUnits="false" constant="false"
+               fbc:charge="-2" fbc:chemicalFormula="C6H11O9P"/>
+      <species id="fdp_c" name="Fructose-1,6-bisphosphate" compartment="c" boundaryCondition="false"
+               hasOnlySubstanceUnits="false" constant="false"
+               fbc:charge="-4" fbc:chemicalFormula="C6H10O12P2"/>
+      <species id="g3p_c" name="Glyceraldehyde-3-phosphate" compartment="c" boundaryCondition="false"
+               hasOnlySubstanceUnits="false" constant="false"
+               fbc:charge="-2" fbc:chemicalFormula="C3H5O6P"/>
+      <species id="dhap_c" name="Dihydroxyacetone phosphate" compartment="c" boundaryCondition="false"
+               hasOnlySubstanceUnits="false" constant="false"
+               fbc:charge="-2" fbc:chemicalFormula="C3H5O6P"/>
+    </listOfSpecies>
+    <listOfReactions>
+      <reaction id="EX_glc" name="Glucose exchange" reversible="false"
+                fbc:lowerFluxBound="cobra_0_bound" fbc:upperFluxBound="cobra_10_bound">
+        <listOfProducts>
+          <speciesReference species="glucose_c" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+      </reaction>
+      <reaction id="HEX1" name="Hexokinase" reversible="false"
+                fbc:lowerFluxBound="cobra_0_bound" fbc:upperFluxBound="cobra_default_ub">
+        <listOfReactants>
+          <speciesReference species="glucose_c" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="g6p_c" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+      </reaction>
+      <reaction id="PFK" name="Phosphofructokinase" reversible="false"
+                fbc:lowerFluxBound="cobra_0_bound" fbc:upperFluxBound="cobra_default_ub">
+        <listOfReactants>
+          <speciesReference species="g6p_c" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="fdp_c" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+      </reaction>
+      <reaction id="FBA_rxn" name="Fructose-bisphosphate aldolase" reversible="false"
+                fbc:lowerFluxBound="cobra_0_bound" fbc:upperFluxBound="cobra_default_ub">
+        <listOfReactants>
+          <speciesReference species="fdp_c" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="g3p_c" stoichiometry="1" constant="true"/>
+          <speciesReference species="dhap_c" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+      </reaction>
+      <reaction id="BIOMASS" name="Biomass objective" reversible="false"
+                fbc:lowerFluxBound="cobra_0_bound" fbc:upperFluxBound="cobra_default_ub">
+        <listOfReactants>
+          <speciesReference species="g3p_c" stoichiometry="1" constant="true"/>
+          <speciesReference species="dhap_c" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+      </reaction>
+    </listOfReactions>
+    <listOfParameters>
+      <parameter id="cobra_0_bound" value="0" constant="true" sboTerm="SBO:0000626"/>
+      <parameter id="cobra_10_bound" value="10" constant="true" sboTerm="SBO:0000626"/>
+      <parameter id="cobra_default_ub" value="1000" constant="true" sboTerm="SBO:0000626"/>
+    </listOfParameters>
+    <fbc:listOfObjectives fbc:activeObjective="obj">
+      <fbc:objective fbc:id="obj" fbc:type="maximize">
+        <fbc:listOfFluxObjectives>
+          <fbc:fluxObjective fbc:reaction="BIOMASS" fbc:coefficient="1"/>
+        </fbc:listOfFluxObjectives>
+      </fbc:objective>
+    </fbc:listOfObjectives>
+  </model>
+</sbml>

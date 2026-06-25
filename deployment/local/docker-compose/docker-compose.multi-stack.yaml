@@ -1,0 +1,260 @@
+# docker-compose.multi-stack.yaml
+# Multi-stack deployment configuration for testing multiple gateway instances
+# Usage: STACK_ID=stack_b docker-compose -f docker-compose.base.yaml -f docker-compose.multi-stack.yaml --project-name stack_b up
+#
+# This configuration allows launching multiple complete application stacks (gateway_a, gateway_b, etc.)
+# while sharing the same base infrastructure (postgres, redis, keycloak, vector_db).
+
+# Environment variable requirements:
+# - STACK_ID: Identifier for this stack instance (e.g., "stack_a", "stack_b")
+# - STACK_PORT_OFFSET: Port offset to avoid conflicts (e.g., 0, 100, 200)
+
+services:
+  # Agent Gateway instance for this stack
+  agent_gateway:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.agent_gateway
+    container_name: agent_gateway_${STACK_ID:-stack_a}
+    profiles: ["multi-stack", "apps"]
+    env_file:
+      - .env
+    secrets:
+      - AGENT_GATEWAY_CLIENT_ID
+      - AGENT_GATEWAY_CLIENT_SECRET
+      - SERVICE_API_KEYS_CONFIG
+    command: /app/.venv/bin/python -m agentic_framework_pkg.agent_gateway.main
+    ports:
+      - "${GATEWAY_EXTERNAL_PORT:-8083}:8081"
+    volumes:
+      - ../../../data:/app/data
+      - shared_uploads:/app/data/uploaded_files
+    environment:
+      - SECRET_RETRIEVAL_METHOD=file
+      - SECRET_FILE_PATH=/run/secrets
+      - AGENT_GATEWAY_CLIENT_SECRET_FILE=/run/secrets/agent_gateway_client_secret
+      - USE_CHECKPOINTING=true
+      - AGENT_GATEWAY_AUTH_ENABLED=true
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_EXTERNAL_URL=http://localhost:8180
+      - KEYCLOAK_REALM=master
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - MCP_SERVER_URL=http://mcp_server:8080/mcp
+      - HPC_MCP_SERVER_URL=http://hpc_mcp_server:8081
+      - SANDBOX_MCP_SERVER_URL=http://sandbox_mcp_server:8082/mcp
+      - REDIS_URL=redis://redis:6379/${STACK_REDIS_DB:-0}
+      - AGENT_GATEWAY_ALIAS=${STACK_ID:-stack_a}
+      - PUBLIC_GATEWAY_URL=http://localhost:${GATEWAY_EXTERNAL_PORT:-8083}
+      - AGENT_GATEWAY_CLIENT_ID=agent-gateway-client
+      - KEYCLOAK_CLIENT_ID=agent-gateway-client
+      - GATEWAY_REGISTRY_URL=http://gateway_registry:8086
+      - ORCHESTRATION_SERVICE_URL=http://orchestration_service:8084
+    networks:
+      - agentic_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Orchestration Service instance for this stack
+  orchestration_service:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.orchestration_service
+    container_name: orchestration_service_${STACK_ID:-stack_a}
+    profiles: ["multi-stack", "apps"]
+    env_file:
+      - .env
+    volumes:
+      - ../../../config:/app/config:ro
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/agentic_orchestrator_${STACK_ID:-stack_a}
+      - REDIS_URL=redis://redis:6379/${STACK_REDIS_DB:-0}
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - GATEWAY_REGISTRY_URL=http://gateway_registry:8086
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_EXTERNAL_URL=http://localhost:8180
+      - KEYCLOAK_REALM=master
+      - KEYCLOAK_CLIENT_ID=agent-gateway-client
+      - STACK_ID=${STACK_ID:-stack_a}
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+    ports:
+      - "${ORCHESTRATOR_EXTERNAL_PORT:-8084}:8084"
+    networks:
+      - agentic_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # MCP Server instance for this stack
+  mcp_server:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.mcp_server
+    container_name: mcp_server_${STACK_ID:-stack_a}
+    profiles: ["multi-stack", "apps"]
+    env_file:
+      - .env
+      - .env-keycloak-credentials-dir/.env-keycloak-credentials
+    ports:
+      - "${MCP_SERVER_EXTERNAL_PORT:-8080}:8080"
+    volumes:
+      - ../../../data:/app/data
+      - ../../../config:/app/config:ro
+      - shared_uploads:/app/data/uploaded_files
+    environment:
+      - USE_CHECKPOINTING=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION}
+      - VERTEXAI_PROJECT=${VERTEXAI_PROJECT}
+      - VERTEXAI_LOCATION=${VERTEXAI_LOCATION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION_NAME=${AWS_REGION_NAME}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE}
+      - AGENT_GATEWAY_AUTH_ENABLED=true
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - REDIS_URL=redis://redis:6379/${STACK_REDIS_DB:-0}
+      - UV_CACHE_DIR=/tmp/.uv_cache
+      - AGENT_GATEWAY_URL=http://agent_gateway:8081
+      - STACK_ID=${STACK_ID:-stack_a}
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+      # Single worker (Session 62): stateless_http=True is the real fix (eliminates session affinity).
+      # Multi-worker causes silent worker crash loop due to heavy module-level initialization.
+      # Tracked for future fix in SESSION_62 tracker.
+      - UVICORN_WORKERS=1
+    restart: unless-stopped
+    networks:
+      - agentic_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # HPC MCP Server instance for this stack
+  hpc_mcp_server:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.hpc
+    container_name: hpc_mcp_server_${STACK_ID:-stack_a}
+    profiles: ["multi-stack", "apps"]
+    ports:
+      - "${HPC_MCP_SERVER_EXTERNAL_PORT:-8081}:8081"
+    env_file:
+      - .env
+    environment:
+      - USE_CHECKPOINTING=true
+      - HPC_MCP_SERVER_PORT=8081
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - BLASTDB=/blast_databases
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - REDIS_URL=redis://redis:6379/${STACK_REDIS_DB:-0}
+      - UV_CACHE_DIR=/tmp/.uv_cache
+      - STACK_ID=${STACK_ID:-stack_a}
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+    volumes:
+      - ./blast_databases:/blast_databases
+      - ../../../data:/app/data
+      - ../../../config:/app/config:ro
+      - shared_uploads:/app/data/uploaded_files
+    networks:
+      - agentic_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Sandbox MCP Server instance for this stack
+  sandbox_mcp_server:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      args:
+        APP_UID: ${DOCKER_UID:-1000}
+        APP_GID: ${DOCKER_GID_APP:-1000}
+        DOCKER_GID: ${DOCKER_GID:-999}
+      dockerfile: infra/dockerfiles/Dockerfile.sandbox
+    container_name: sandbox_mcp_server_${STACK_ID:-stack_a}
+    profiles: ["multi-stack", "apps"]
+    env_file:
+      - .env
+    environment:
+      - USE_CHECKPOINTING=true
+      - SANDBOX_MCP_SERVER_HOST=0.0.0.0
+      - SANDBOX_MCP_SERVER_PORT=8082
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-DEBUG}
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - REDIS_URL=redis://redis:6379/${STACK_REDIS_DB:-0}
+      - STACK_ID=${STACK_ID:-stack_a}
+    privileged: true
+    ports:
+      - "${SANDBOX_MCP_SERVER_EXTERNAL_PORT:-8082}:8082"
+    networks:
+      - agentic_network
+    volumes:
+      - ../../../data:/app/data
+      - shared_uploads:/app/data/uploaded_files
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Streamlit App v2 instance for this stack
+  streamlit_app_v2:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.streamlit_app
+    container_name: streamlit_app_v2_${STACK_ID:-stack_a}
+    profiles: ["multi-stack", "apps"]
+    ports:
+      - "${STREAMLIT_V2_EXTERNAL_PORT:-8503}:8503"
+    volumes:
+      - ../../../data:/app/data
+      - ../../../config:/app/config:ro
+      - shared_uploads:/app/data/uploaded_files
+    env_file:
+      - .env
+    environment:
+      - AGENT_GATEWAY_URL=http://agent_gateway:8081/v1
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_REALM=master
+      - STREAMLIT_V2_SERVER_PORT=8503
+      - STACK_ID=${STACK_ID:-stack_a}
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+    command: ["/app/.venv/bin/python", "-m", "agentic_framework_pkg.streamlit_app_v2.main"]
+    restart: unless-stopped
+    networks:
+      - agentic_network
+
+# Network configuration
+networks:
+  agentic_network:
+    external: true
+    name: chapter-06-advanced-multi-agent-orchestration_agentic_network
+
+# Note: Volumes are shared from the base infrastructure

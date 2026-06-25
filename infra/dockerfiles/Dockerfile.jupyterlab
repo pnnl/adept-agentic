@@ -1,0 +1,52 @@
+FROM jupyter/scipy-notebook:latest
+
+# The base image's default user is 'jovyan' (UID=1000, GID=100) with home /home/jovyan.
+# The `user:` directive in docker-compose.yaml will map your host user's UID/GID to this user at runtime.
+
+# Set the working directory. The base image's start scripts run from here.
+WORKDIR /home/jovyan/work
+
+# Copy project definition files and source code with correct ownership.
+# This is necessary for the editable install.
+COPY --chown=jovyan:users pyproject.toml uv.lock* ./
+COPY --chown=jovyan:users src/ ./src/
+COPY --chown=jovyan:users notebooks/ /home/jovyan/work/data/notebooks/
+COPY --chown=jovyan:users notebooks/sample_data.csv /home/jovyan/work/data/sample_data.csv
+COPY --chown=jovyan:users notebooks/sample_data.csv /home/jovyan/work/data/uploaded_files/sample_data.csv
+
+# Switch to the jovyan user to install packages
+USER jovyan
+
+# Install uv and project dependencies into the default conda environment.
+# This makes them available to the notebooks.
+RUN pip install --no-cache-dir uv
+
+# Fix numpy/pandas compatibility issue by forcing reinstall
+# This ensures pandas and numpy are compatible versions
+RUN pip uninstall -y numpy pandas && \
+    pip install --no-cache-dir numpy==1.26.4 pandas==2.2.2
+
+# Install the rest of the project dependencies
+RUN uv pip install --no-cache-dir --system --editable .
+
+# Install OAuth authenticator for Keycloak SSO integration
+RUN pip install --no-cache-dir oauthenticator==16.3.1
+
+# Copy JupyterLab OAuth configuration
+COPY --chown=jovyan:users infra/jupyterlab/jupyter_lab_config.py /home/jovyan/.jupyter/jupyter_lab_config.py
+
+# Ensure cookie secret directory exists with correct permissions
+RUN mkdir -p /home/jovyan/.jupyter && \
+    touch /home/jovyan/.jupyter/jupyterlab_cookie_secret && \
+    chmod 600 /home/jovyan/.jupyter/jupyterlab_cookie_secret
+
+# Copy modified health check script (uses /api/status instead of /api to avoid token generation)
+# Issue #1: Health check was generating 17,280 tokens/day filling storage
+# Solution: /api/status endpoint doesn't require auth and doesn't generate tokens
+USER root
+COPY --chown=root:root infra/jupyterlab/docker_healthcheck.py /etc/jupyter/docker_healthcheck.py
+RUN chmod 755 /etc/jupyter/docker_healthcheck.py
+USER jovyan
+
+# The notebook and data directories are mounted via docker-compose.
+# The default command from the base image will start JupyterLab in /home/jovyan/work

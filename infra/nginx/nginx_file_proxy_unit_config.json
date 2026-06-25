@@ -1,0 +1,36 @@
+{
+    "listeners": {
+        "*:8085": {
+            "pass": "applications/file_proxy"
+        }
+    },
+
+    "applications": {
+        "file_proxy": {
+            "type": "python 3.11",
+            "path": "/app/nginx_file_proxy",
+            "module": "app",
+            "callable": "app",
+            "processes": {
+                "max": 4,
+                "spare": 2,
+                "idle_timeout": 60
+            },
+            "limits": {
+                "timeout": 30,
+                "requests": 1000
+            }
+        }
+    },
+
+    "settings": {
+        "http": {
+            "max_body_size": 10485760,
+            "send_timeout": 30,
+            "idle_timeout": 60,
+            "header_read_timeout": 10,
+            "body_read_timeout": 30,
+            "discard_unsafe_fields": true
+        }
+    }
+}

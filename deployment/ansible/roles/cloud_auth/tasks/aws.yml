@@ -1,0 +1,23 @@
+---
+# AWS authentication tasks
+# Validates AWS credentials and tests authentication
+
+- name: Configure AWS credentials
+  set_fact:
+    aws_access_key_id: "{{ credentials.aws.access_key_id }}"
+    aws_secret_access_key: "{{ credentials.aws.secret_access_key }}"
+    aws_region: "{{ credentials.aws.region }}"
+  no_log: true
+
+- name: Test AWS authentication
+  command: aws sts get-caller-identity
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+    AWS_REGION: "{{ aws_region }}"
+  register: aws_identity
+  changed_when: false
+
+- name: Display AWS account info
+  debug:
+    msg: "Authenticated to AWS Account {{ (aws_identity.stdout | from_json).Account }} in region {{ aws_region }}"

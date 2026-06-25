@@ -1,0 +1,13 @@
+# GPU overlay — enables NVIDIA GPU access
+# Usage: docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up -d
+services:
+  {{NAME}}_mcp_server:
+    environment:
+      {{NAME_UPPER}}_DEVICE: "cuda"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

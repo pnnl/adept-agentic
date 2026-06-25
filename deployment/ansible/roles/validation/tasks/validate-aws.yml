@@ -1,0 +1,79 @@
+---
+# AWS-specific validation tasks
+
+- name: Validate AWS CloudFormation stack status
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name "ADE-{{ deployment.environment }}-{{ deployment.user }}-App-Stack"
+    --query "Stacks[0].StackStatus"
+    --output text
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+  register: stack_status
+  changed_when: false
+  failed_when: stack_status.stdout not in ['CREATE_COMPLETE', 'UPDATE_COMPLETE']
+
+- name: Display AWS stack status
+  debug:
+    msg: "CloudFormation stack status: {{ stack_status.stdout }}"
+
+- name: Get ALB status
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name "ADE-{{ deployment.environment }}-{{ deployment.user }}-App-Stack"
+    --query "Stacks[0].Outputs[?OutputKey=='LoadBalancerArn'].OutputValue"
+    --output text
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+  register: alb_arn
+  changed_when: false
+
+- name: Validate ALB is active
+  command: >
+    aws elbv2 describe-load-balancers
+    --load-balancer-arns "{{ alb_arn.stdout }}"
+    --query "LoadBalancers[0].State.Code"
+    --output text
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+  register: alb_state
+  changed_when: false
+  failed_when: alb_state.stdout != 'active'
+
+- name: Display ALB status
+  debug:
+    msg: "Application Load Balancer status: {{ alb_state.stdout }}"
+
+- name: Get Cognito User Pool ID
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name "ADE-{{ deployment.environment }}-{{ deployment.user }}-App-Stack"
+    --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue"
+    --output text
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+  register: user_pool_id
+  changed_when: false
+
+- name: Display Cognito status
+  debug:
+    msg: "Cognito User Pool ID: {{ user_pool_id.stdout }}"
+
+- name: Display validation summary
+  debug:
+    msg: |
+      ================================================
+      AWS Validation Summary
+      ================================================
+      ✓ CloudFormation Stack: {{ stack_status.stdout }}
+      ✓ Application Load Balancer: {{ alb_state.stdout }}
+      ✓ Cognito User Pool: {{ user_pool_id.stdout }}
+      ================================================

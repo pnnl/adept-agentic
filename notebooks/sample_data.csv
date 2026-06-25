@@ -1,0 +1,11 @@
+Property_ID,Address,City,State,Zip,Property_Type,Bedrooms,Bathrooms,Square_Feet,Price,Year_Built,Listing_Date,Agent_Name
+1001,123 Maple St,Seattle,WA,98115,Single Family,3,2.5,2100,725000,1998,2025-07-01,John Doe
+1002,456 Oak Ave,Portland,OR,97209,Condo,2,1,950,399000,2007,2025-06-15,Jane Smith
+1003,789 Pine Dr,San Francisco,CA,94122,Townhouse,4,3,1850,1295000,1985,2025-07-03,Mike Johnson
+1004,321 Birch Rd,Austin,TX,78701,Single Family,5,4.5,3200,875000,2012,2025-05-22,Laura Wilson
+1005,654 Cedar Blvd,Boston,MA,02118,Condo,1,1,700,485000,2010,2025-06-30,Emily Davis
+1006,987 Elm St,Denver,CO,80203,Single Family,4,2.5,2400,695000,2000,2025-07-08,Chris Martinez
+1007,147 Spruce Ln,Chicago,IL,60614,Townhouse,3,2,1650,615000,1995,2025-06-28,Sarah Brown
+1008,258 Willow Ct,Miami,FL,33133,Condo,2,2,1100,550000,2018,2025-07-15,Alex Rodriguez
+1009,369 Aspen Way,Atlanta,GA,30309,Single Family,3,2,1950,620000,2005,2025-07-10,Nicole Lee
+1010,159 Poplar Cir,Phoenix,AZ,85004,Townhouse,2,1.5,1350,340000,1990,2025-07-12,David Kim

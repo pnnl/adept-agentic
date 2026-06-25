@@ -1,0 +1,57 @@
+# values-azure.yaml
+# Overrides for deploying the agentic-framework to Azure AKS.
+
+global:
+  image:
+    # The repositoryPrefix will be set by the CI/CD pipeline, e.g., "youracr.azurecr.io/agentic-framework/"
+    pullPolicy: Always
+
+# Secrets should be managed via Azure Key Vault and the CSI Secrets Store Driver
+secrets:
+  create: false
+  existingSecretName: "agentic-framework-secrets" # The name of the K8s secret created by the CSI driver
+  csi:
+    provider: "azure"
+    parameters:
+      usePodIdentity: "false" # Use Managed Identity
+      keyvaultName: "your-keyvault-name" # This should be set by the CI/CD pipeline
+      tenantId: "your-tenant-id" # This should be set by the CI/CD pipeline
+      objects: |
+        array:
+          - |
+            objectName: OPENAI-API-KEY
+            objectType: secret
+          - |
+            objectName: POSTGRES-PASSWORD
+            objectType: secret
+          - |
+            objectName: KEYCLOAK-ADMIN-PASSWORD
+            objectType: secret
+    secretObjects:
+      - key: "OPENAI_API_KEY"
+        objectName: "OPENAI-API-KEY"
+      - key: "POSTGRES_PASSWORD"
+        objectName: "POSTGRES-PASSWORD"
+      - key: "KEYCLOAK_ADMIN_PASSWORD"
+        objectName: "KEYCLOAK-ADMIN-PASSWORD"
+
+# Persistence configuration for Azure
+persistence:
+  data:
+    storageClassName: "azurefile" # Standard Azure Files storage
+  shared_uploads:
+    storageClassName: "azurefile"
+  blast_databases:
+    storageClassName: "azurefile"
+
+postgres:
+  persistence:
+    storageClassName: "azurefile"
+
+# Ingress configuration for Azure with NGINX or Application Gateway
+ingress:
+  enabled: true
+  className: "nginx" # Or "azure-application-gateway" if using AGIC
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"

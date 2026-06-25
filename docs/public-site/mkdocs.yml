@@ -1,0 +1,107 @@
+site_name: ADEPT Documentation
+site_url: https://pnnl.github.io/adept-agentic/
+site_description: Agentic Discovery and Exploration Platform for Tools
+site_author: Pacific Northwest National Laboratory
+
+repo_url: https://github.com/pnnl/adept-agentic
+repo_name: pnnl/adept-agentic
+edit_uri: edit/main/docs/public-site/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Domain Scientists: getting-started/domain-scientists.md
+    - Platform Engineers: getting-started/platform-engineers.md
+    - System Administrators: getting-started/system-administrators.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - MCP Tool System: architecture/mcp-tool-system.md
+    - Multi-Agent Orchestration: architecture/multi-agent.md
+    - A2A Federation: architecture/a2a-federation.md
+    - Security Model: architecture/security-model.md
+  - Deployment:
+    - Docker Compose: deployment/docker-compose.md
+    - Kubernetes & Helm: deployment/kubernetes-helm.md
+    - Multi-Cloud: deployment/multi-cloud.md
+  - User Guides:
+    - RAG Workflows: user-guides/rag-workflows.md
+    - CLI Reference: user-guides/cli-reference.md
+    - File Management: user-guides/file-management.md
+    - JupyterLab & Notebooks: user-guides/jupyter-notebooks.md
+    - Connectors: user-guides/connectors.md
+  - CI/CD:
+    - GitHub Actions: ci-cd/github-actions.md
+    - Versioning & Releases: ci-cd/versioning-releases.md
+    - ASOPB Benchmark: ci-cd/asopb-benchmark.md
+  - Contributing:
+    - How to Contribute: contributing/how-to-contribute.md
+    - Code Review: contributing/code-review.md
+  - Testing:
+    - Strategy: testing/strategy.md
+    - Running Tests: testing/running-tests.md
+  - Developer Tools:
+    - Claude Code Skills: developer-tools/claude-code-skills.md
+    - Dual API Strategy: developer-tools/dual-api-strategy.md
+  - Reference:
+    - Troubleshooting: reference/troubleshooting.md
+    - Known Issues: reference/known-issues.md
+    - Roadmap: reference/roadmap.md
+    - Changelog: reference/changelog.md
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pnnl/adept-agentic
+  generator: false

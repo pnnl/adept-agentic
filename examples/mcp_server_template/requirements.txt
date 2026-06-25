@@ -1,0 +1,9 @@
+# {{DISPLAY_NAME}} MCP Server Dependencies
+# ==========================================
+# Framework (provided by base image):
+#   fastmcp, fastapi, uvicorn, pydantic, pydantic-settings, redis
+#
+# Domain-specific (add your dependencies below):
+# torch>=2.0
+# numpy>=1.24
+# scikit-learn>=1.3

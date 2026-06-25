@@ -1,0 +1,789 @@
+# src/agentic_framework_pkg/streamlit_app_v2/Chat.py
+# Chat page for Agentic Scientific Workflow Assistant
+# Migration to Responses API - eliminates Assistant API failures
+import asyncio
+from datetime import datetime
+import json
+import os
+import time
+import warnings
+from typing import Dict, List
+
+import jwt
+import openai
+import requests
+import streamlit as st
+from sqlalchemy import update
+from sqlalchemy.sql import func
+
+# Suppress st.cache deprecation warning from streamlit-cookies-manager library
+# The functionality works fine, just uses deprecated API internally
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="streamlit.legacy_caching.caching")
+warnings.filterwarnings("ignore", message=".*st\\.cache.*")
+
+from streamlit_cookies_manager import EncryptedCookieManager
+
+from agentic_framework_pkg.logger_config import get_logger
+from agentic_framework_pkg.orchestration_service.models.session_models import (
+    SessionMessage,
+    UserSession,
+)
+from agentic_framework_pkg.orchestration_service.persistence.checkpointing import (
+    get_async_session,
+)
+from agentic_framework_pkg.streamlit_app_v2.components.session_navigator import (
+    SessionNavigator,
+)
+from agentic_framework_pkg.streamlit_app_v2.file_types import SUPPORTED_FILE_TYPES
+from agentic_framework_pkg.streamlit_app_v2.image_utils import (
+    check_for_plots_in_tool_outputs,
+    display_plots_from_message,
+    display_plots_from_tool_outputs,
+    extract_plots_from_response_api,
+)
+from agentic_framework_pkg.streamlit_app_v2.session_utils import (
+    get_user_id_from_token,
+    create_session_in_db,
+    save_message_to_db,
+    save_session_title,
+    get_session_from_db,
+)
+
+logger = get_logger(__name__)
+
+# --- CRITICAL: Initialize Cookie Manager FIRST (before st.set_page_config) ---
+# This ensures the JavaScript component loads before any Streamlit content renders
+COOKIE_ENCRYPTION_KEY = os.getenv(
+    "COOKIE_ENCRYPTION_KEY", "change-this-in-production-minimum-32-chars"
+)
+
+# Initialize cookie manager (singleton pattern - created once per session)
+if "cookie_manager" not in st.session_state:
+    st.session_state.cookie_manager = EncryptedCookieManager(
+        prefix="agentic_framework_",
+        password=COOKIE_ENCRYPTION_KEY
+    )
+
+cookies = st.session_state.cookie_manager
+
+# Check if cookies are ready - with timeout and graceful degradation
+# Cookie manager may fail to initialize in dual access mode due to URL configuration
+cookie_ready_timeout = 3.0  # seconds
+
+# Initialize timeout tracking in session state (persist across reruns)
+if "cookie_check_start_time" not in st.session_state:
+    st.session_state.cookie_check_start_time = time.time()
+if "cookie_timeout_checked" not in st.session_state:
+    st.session_state.cookie_timeout_checked = False
+
+if not cookies.ready():
+    elapsed_time = time.time() - st.session_state.cookie_check_start_time
+
+    # Check if we've exceeded the timeout
+    if elapsed_time > cookie_ready_timeout or st.session_state.cookie_timeout_checked:
+        # Cookie manager failed - show warning but allow app to continue
+        st.session_state.cookie_timeout_checked = True
+
+        #st.warning("⚠️ Session persistence unavailable - cookies may not persist across page refreshes.")
+
+        # with st.expander("🔍 Technical Details (Session 36 - Dual Access Mode Investigation)"):
+        #     st.info("**Cookie Manager Status**: Initialization timeout")
+        #     st.json({
+        #         "STREAMLIT_BASE_URL_PATH": os.getenv("STREAMLIT_BASE_URL_PATH", "(not set)"),
+        #         "STREAMLIT_EXTERNAL_URL": os.getenv("STREAMLIT_EXTERNAL_URL", "(not set)"),
+        #         "cookies_ready": False,
+        #         "timeout_seconds": cookie_ready_timeout,
+        #         "elapsed_seconds": round(elapsed_time, 2)
+        #     })
+        #     st.markdown("""
+        #     **Impact**: Your session data (selected assistant, thread history navigation) will reset on page refresh.
+
+        #     **Workaround**: Keep this browser tab open. Avoid refreshing the page.
+
+        #     **For Developers**: See `docs/troubleshooting/SESSION_36_COOKIE_MANAGER_INVESTIGATION.md`
+        #     """)
+
+        # Continue with app execution (graceful degradation)
+        logger.warning("Cookie manager initialization timeout - continuing without cookie persistence")
+    else:
+        # Still waiting for cookie manager - show loading message and rerun
+        st.info(f"🔄 Initializing session management... ({round(elapsed_time, 1)}s / {cookie_ready_timeout}s)")
+        time.sleep(0.5)  # Small delay before rerun
+        st.rerun()
+
+# --- Configuration ---
+st.set_page_config(
+    page_title="💬 Adept Chat",
+    page_icon="💬",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+AGENT_GATEWAY_URL = os.getenv("AGENT_GATEWAY_URL", "http://agent_gateway:8081/v1")
+KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "http://keycloak:8180")
+KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "master")
+MODEL_NAME = os.getenv("AGENT_MODEL_NAME", "agentic-framework:scientific-agent-v1")
+
+
+# --- Authentication ---
+def get_user_token(username, password):
+    """Authenticates with Keycloak to get a JWT for the user."""
+    token_url = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token"
+    payload = {
+        "client_id": "login-client",
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+    }
+    try:
+        response = requests.post(token_url, data=payload)
+        response.raise_for_status()
+        return response.json()["access_token"]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to get access token: {e}")
+        return None
+
+
+# --- Streamlit-Specific Token Refresh Logic ---
+def refresh_token_if_expired():
+    """Refresh token if expired. Streamlit-specific, doesn't affect other OpenAI clients."""
+    if "stored_username" in st.session_state and "stored_password" in st.session_state:
+
+        try:
+            new_token = get_user_token(
+                st.session_state.stored_username, st.session_state.stored_password
+            )
+            if new_token:
+                st.session_state.api_key = new_token
+                st.success("🔄 Token refreshed successfully")
+                return True
+        except Exception as e:
+            logger.error(f"Token refresh failed: {e}")
+
+    # If refresh failed, clear session and require re-login
+    st.error("❌ Session expired. Please refresh the page and log in again.")
+    if st.button("Refresh Page"):
+        st.session_state.clear()
+        st.rerun()
+    return False
+
+
+# --- OpenAI Client Initialization ---
+def get_openai_client():
+    if "api_key" in st.session_state and st.session_state.api_key:
+        # Use Responses API endpoints instead of Assistant API
+        return openai.OpenAI(
+            base_url=f"{AGENT_GATEWAY_URL}/responses", api_key=st.session_state.api_key
+        )
+    return None
+
+
+# --- Session Persistence Helper Functions ---
+# --- Main App Logic ---
+# Note: Database utility functions (get_user_id_from_token, create_session_in_db, save_message_to_db)
+# have been moved to app.py for reusability in tests and other modules.
+# Cookie name constant (matches cookie_manager.py)
+COOKIE_NAME = "agentic_framework_auth"
+
+
+def logout():
+    """Perform full logout: revoke token, clear cookie, clear session state."""
+    # Revoke Keycloak token (optional, for security best practice)
+    if "api_key" in st.session_state:
+        try:
+            keycloak_url = os.getenv("KEYCLOAK_URL", "http://keycloak:8180")
+            revoke_url = f"{keycloak_url}/realms/agentic-framework/protocol/openid-connect/revoke"
+
+            requests.post(
+                revoke_url,
+                data={
+                    "token": st.session_state.api_key,
+                    "client_id": "agent-gateway-client",
+                },
+                timeout=5,
+            )
+        except Exception as e:
+            # Log error but continue logout
+            logger.warning(f"Token revocation failed: {e}")
+
+    # Clear cookie using global cookies object (only if cookies are ready)
+    try:
+        if cookies.ready() and COOKIE_NAME in cookies:
+            del cookies[COOKIE_NAME]
+            cookies.save()
+    except Exception as e:
+        logger.warning(f"Failed to clear cookie (cookie manager not ready): {e}")
+
+    # Clear session state
+    st.session_state.logged_in = False
+    st.session_state.api_key = None
+    st.session_state.username = None
+    st.session_state.clear()
+
+    st.rerun()
+
+# Check for existing cookie authentication (only if cookies are ready)
+if "logged_in" not in st.session_state:
+    auth_data = None
+    try:
+        if cookies.ready():
+            auth_data = cookies.get(COOKIE_NAME)
+    except Exception as e:
+        logger.warning(f"Failed to retrieve cookie (cookie manager not ready): {e}")
+        auth_data = None
+
+    if auth_data and "::" in auth_data:
+        username, token = auth_data.split("::", 1)
+        # Verify token is still valid (optional: add Keycloak introspection check)
+        st.session_state.logged_in = True
+        st.session_state.api_key = token
+        st.session_state.username = username
+        st.session_state.stored_username = username
+    else:
+        st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("Login to Agent Gateway")
+    username = st.text_input("Username", value="notebook-user")
+    password = st.text_input("Password", type="password", value="notebook-password")
+    if st.button("Login"):
+        token = get_user_token(username, password)
+        if token:
+            st.session_state.logged_in = True
+            st.session_state.api_key = token
+            st.session_state.username = username
+            # Store credentials for token refresh (Streamlit-specific)
+            st.session_state.stored_username = username
+            st.session_state.stored_password = password
+
+            # Store in encrypted cookie for persistence (only if cookies are ready)
+            try:
+                if cookies.ready():
+                    cookies[COOKIE_NAME] = f"{username}::{token}"
+                    cookies.save()
+                else:
+                    logger.warning("Cookie manager not ready - login credentials won't persist across refreshes")
+            except Exception as e:
+                logger.warning(f"Failed to save cookie (cookie manager not ready): {e}")
+
+            st.rerun()
+        else:
+            st.error("Login failed.")
+else:
+    st.title("🔬 Agentic Scientific Workflow Assistant (v2)")
+    st.caption(
+        f"Connected to: {AGENT_GATEWAY_URL}/responses | User: {st.session_state.username}"
+    )
+    #st.info("✅ Using Responses API - Simpler, more reliable than Assistant API")
+
+    # Add logo ABOVE the page navigation (Chat/Session Manager tabs)
+    # st.logo() places content above the built-in page selector
+    try:
+        # Load ADEPT logo from static directory
+        logo_path = os.path.join(os.path.dirname(__file__), "static", "ADEPT-CAI-logo.jpg")
+        if os.path.exists(logo_path):
+            # Use st.logo() with size='large' for proper positioning above navigation
+            st.logo(logo_path, size='large')
+        else:
+            # Fallback: Use st.sidebar for text-based logo
+            with st.sidebar:
+                st.markdown("### 🎯 ADEPT Platform")
+                st.divider()
+    except Exception as e:
+        # Fallback to text-based logo in sidebar
+        with st.sidebar:
+            st.markdown("### 🎯 ADEPT Platform")
+            st.divider()
+
+    client = get_openai_client()
+    if not client:
+        st.error("Client not initialized. Please log in again.")
+        st.session_state.logged_in = False
+        st.stop()
+
+    # Initialize conversation history and session for Responses API
+    if "conversation_history" not in st.session_state:
+        st.session_state.conversation_history = []
+        # Generate a persistent session ID for this Streamlit session
+        import uuid
+
+        session_id = f"streamlit_{uuid.uuid4().hex[:16]}"
+        st.session_state.response_session_id = session_id
+
+        # Get user_id from JWT token
+        user_id = get_user_id_from_token(st.session_state.api_key)
+        st.session_state.user_id = user_id
+
+        # Create session in database (with error handling)
+        try:
+            with st.spinner("Initializing session..."):
+                asyncio.run(
+                    create_session_in_db(
+                        session_id=session_id,
+                        user_id=user_id,
+                        username=st.session_state.username,
+                        session_type="response",
+                    )
+                )
+            st.success(
+                f"Conversation initialized with Responses API (Session: {st.session_state.response_session_id})"
+            )
+        except Exception as e:
+            logger.error(f"Failed to create session in database: {e}", exc_info=True)
+            st.warning("Session initialized locally (database unavailable)")
+
+    # Initialize session title if not set
+    if "session_title" not in st.session_state:
+        # Try to load from database
+        try:
+            session_id = st.session_state.get("response_session_id")
+            if session_id:
+                session_obj = asyncio.run(get_session_from_db(session_id))
+                st.session_state.session_title = session_obj.title or session_id
+            else:
+                st.session_state.session_title = None
+        except Exception as e:
+            logger.warning(f"Failed to load session title: {e}")
+            st.session_state.session_title = st.session_state.get("response_session_id", "Not set")
+
+    # Display chat messages from conversation history
+    for msg in st.session_state.conversation_history:
+        with st.chat_message(msg["role"]):
+            # Display timestamp and duration (if available)
+            timestamp_str = ""
+            if "timestamp" in msg:
+                timestamp = msg["timestamp"]
+                if isinstance(timestamp, str):
+                    try:
+                        timestamp = datetime.fromisoformat(timestamp)
+                    except:
+                        pass
+                if isinstance(timestamp, datetime):
+                    timestamp_str = timestamp.strftime("%H:%M:%S")
+                else:
+                    timestamp_str = str(timestamp)
+
+            duration_str = ""
+            if msg["role"] == "assistant" and "duration" in msg and msg["duration"]:
+                duration = msg["duration"]
+                if duration < 1:
+                    duration_str = f" ⏱️ {duration*1000:.0f}ms"
+                else:
+                    duration_str = f" ⏱️ {duration:.1f}s"
+
+            # Show timestamp and duration in a subtle caption
+            if timestamp_str or duration_str:
+                st.caption(f"🕐 {timestamp_str}{duration_str}")
+
+            st.markdown(msg["content"])
+
+            # Check for and display any plots referenced in the message
+            if msg["role"] == "assistant":
+                display_plots_from_message(msg["content"])
+
+    # User input
+    if prompt := st.chat_input("Ask the agent..."):
+        # Check if there are pending files to include
+        if (
+            "pending_file_info" in st.session_state
+            and st.session_state.pending_file_info
+        ):
+            file_info_text = "\n\nAttached files:\n"
+            for file_info in st.session_state.pending_file_info:
+                file_info_text += f"- {file_info['name']} (ID: {file_info['id']})\n"
+            enhanced_prompt = prompt + file_info_text
+
+            # Clear pending files after including them
+            st.session_state.pending_file_info = []
+        else:
+            enhanced_prompt = prompt
+
+        # Track timestamp for user message
+        user_timestamp = datetime.now()
+
+        with st.chat_message("user"):
+            st.caption(f"🕐 {user_timestamp.strftime('%H:%M:%S')}")
+            st.markdown(prompt)
+
+        # Add user message to conversation history (with file info and timestamp)
+        st.session_state.conversation_history.append(
+            {
+                "role": "user",
+                "content": enhanced_prompt,
+                "timestamp": user_timestamp.isoformat()
+            }
+        )
+
+        # Persist user message to database (with error handling)
+        try:
+            asyncio.run(
+                save_message_to_db(
+                    session_id=st.session_state.response_session_id,
+                    role="user",
+                    content=enhanced_prompt,
+                    message_index=len(st.session_state.conversation_history) - 1,
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to save user message to database: {e}", exc_info=True)
+
+        with st.spinner("Agent is processing..."):
+            try:
+                # Track response start time
+                response_start_time = time.time()
+
+                # Use Responses API chat completions endpoint with session persistence
+                response = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=st.session_state.conversation_history,
+                    temperature=0.7,
+                    max_tokens=1000,
+                    stream=False,  # Set to True for streaming if desired
+                    # Enable session persistence for ScientificWorkflowAgent
+                    extra_body={"session_id": st.session_state.response_session_id},
+                )
+
+                # Calculate response duration
+                response_end_time = time.time()
+                response_duration = response_end_time - response_start_time
+                response_timestamp = datetime.now()
+
+                # Extract assistant response
+                assistant_message = response.choices[0].message.content
+
+                # Extract plots from Responses API tool calls
+                plots = extract_plots_from_response_api(response)
+
+                # Display assistant response
+                with st.chat_message("assistant"):
+                    # Display timestamp and duration
+                    if response_duration < 1:
+                        duration_display = f"{response_duration*1000:.0f}ms"
+                    else:
+                        duration_display = f"{response_duration:.1f}s"
+                    st.caption(f"🕐 {response_timestamp.strftime('%H:%M:%S')} ⏱️ {duration_display}")
+
+                    st.markdown(assistant_message)
+
+                    # Display plots from tool calls (structured data)
+                    if plots:
+                        display_plots_from_tool_outputs(plots)
+
+                    # Check for and display any plots referenced in the response text
+                    display_plots_from_message(assistant_message)
+
+                # Add assistant response to conversation history with timestamp and duration
+                st.session_state.conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_message,
+                        "timestamp": response_timestamp.isoformat(),
+                        "duration": response_duration
+                    }
+                )
+
+                # Persist assistant message to database (with error handling)
+                try:
+                    asyncio.run(
+                        save_message_to_db(
+                            session_id=st.session_state.response_session_id,
+                            role="assistant",
+                            content=assistant_message,
+                            message_index=len(st.session_state.conversation_history)
+                            - 1,
+                        )
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to save assistant message to database: {e}",
+                        exc_info=True,
+                    )
+
+            except Exception as e:
+                error_msg = str(e)
+                # Check if it's a token expiration error (Streamlit-specific handling)
+                if (
+                    "401" in error_msg
+                    or "Signature has expired" in error_msg
+                    or "Token validation error" in error_msg
+                ):
+                    st.warning("🔄 Token expired, attempting refresh...")
+                    if refresh_token_if_expired():
+                        # Retry the request with refreshed token
+                        client = get_openai_client()
+                        if client:
+                            try:
+                                # Track response start time (retry path)
+                                retry_response_start_time = time.time()
+
+                                response = client.chat.completions.create(
+                                    model=MODEL_NAME,
+                                    messages=st.session_state.conversation_history,
+                                    temperature=0.7,
+                                    max_tokens=1000,
+                                    stream=False,
+                                    extra_body={
+                                        "session_id": st.session_state.response_session_id
+                                    },
+                                )
+
+                                # Calculate response duration (retry path)
+                                retry_response_end_time = time.time()
+                                retry_response_duration = retry_response_end_time - retry_response_start_time
+                                retry_response_timestamp = datetime.now()
+
+                                assistant_message = response.choices[0].message.content
+
+                                # Extract plots from Responses API tool calls (retry path)
+                                plots = extract_plots_from_response_api(response)
+
+                                with st.chat_message("assistant"):
+                                    # Display timestamp and duration (retry path)
+                                    if retry_response_duration < 1:
+                                        retry_duration_display = f"{retry_response_duration*1000:.0f}ms"
+                                    else:
+                                        retry_duration_display = f"{retry_response_duration:.1f}s"
+                                    st.caption(f"🕐 {retry_response_timestamp.strftime('%H:%M:%S')} ⏱️ {retry_duration_display}")
+
+                                    st.markdown(assistant_message)
+
+                                    # Display plots from tool calls (structured data)
+                                    if plots:
+                                        display_plots_from_tool_outputs(plots)
+
+                                    # Check for and display any plots referenced in the response text
+                                    display_plots_from_message(assistant_message)
+
+                                st.session_state.conversation_history.append(
+                                    {
+                                        "role": "assistant",
+                                        "content": assistant_message,
+                                        "timestamp": retry_response_timestamp.isoformat(),
+                                        "duration": retry_response_duration
+                                    }
+                                )
+
+                                # Persist assistant message to database (retry path, with error handling)
+                                try:
+                                    asyncio.run(
+                                        save_message_to_db(
+                                            session_id=st.session_state.response_session_id,
+                                            role="assistant",
+                                            content=assistant_message,
+                                            message_index=len(
+                                                st.session_state.conversation_history
+                                            )
+                                            - 1,
+                                        )
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Failed to save assistant message to database (retry path): {e}",
+                                        exc_info=True,
+                                    )
+
+                            except Exception as retry_error:
+                                st.error(
+                                    f"Error after token refresh: {str(retry_error)}"
+                                )
+                                logger.error(
+                                    f"Retry error: {retry_error}", exc_info=True
+                                )
+                    # If refresh failed, error message already shown by refresh_token_if_expired()
+                else:
+                    st.error(f"Error processing request: {error_msg}")
+                    logger.error(f"Responses API error: {e}", exc_info=True)
+
+    # Sidebar with file upload
+    with st.sidebar:
+        st.header("Session Info")
+
+        # Session Label (editable with inline rename)
+        current_session_id = st.session_state.get("response_session_id", "Not set")
+        current_title = st.session_state.get("session_title", current_session_id)
+
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            new_title = st.text_input(
+                "Session Label",
+                value=current_title,
+                key="session_label_input",
+                help="Enter a custom name for this session"
+            )
+        with col2:
+            st.write("")  # Vertical spacing
+            st.write("")  # Vertical spacing
+            if st.button("💾", key="save_label", help="Save session label"):
+                if new_title and new_title != current_title:
+                    # Save to database
+                    try:
+                        asyncio.run(save_session_title(current_session_id, new_title))
+                        st.session_state.session_title = new_title
+                        st.success("Session renamed!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to save session title: {e}")
+
+        # Session ID (read-only, immutable)
+        st.text_input(
+            "Session ID",
+            value=current_session_id,
+            disabled=True,
+            help="Unique session identifier (cannot be changed)"
+        )
+
+        # Model (read-only)
+        st.text_input("Model", MODEL_NAME, disabled=True)
+
+        # Messages count (read-only)
+        st.text_input(
+            "Messages",
+            str(len(st.session_state.conversation_history)),
+            disabled=True
+        )
+
+        # Session Navigator Section - COMMENTED OUT
+        # Users can access session history via Session Manager page
+        # st.divider()
+        # st.header("📚 Previous Sessions")
+        #
+        # # Get user_id from JWT token or use username as fallback
+        # user_id = st.session_state.get("user_id", st.session_state.username)
+        #
+        # # Render session navigator
+        # try:
+        #     navigator = SessionNavigator(
+        #         user_id=user_id, username=st.session_state.username
+        #     )
+        #     navigator.render()
+        # except Exception as e:
+        #     logger.error(f"Failed to render session navigator: {e}", exc_info=True)
+        #     st.error("Failed to load session navigator. Please try again later.")
+
+        # File Upload Section
+        st.divider()
+        st.header("📁 File Upload")
+        # Use comprehensive file format support from file_types module
+        uploaded_files = st.file_uploader(
+            "Choose files (up to 5 at a time)",
+            type=SUPPORTED_FILE_TYPES,
+            accept_multiple_files=True,
+            help="Upload up to 5 files at once. Supports documents, code, data, scientific formats, and more for comprehensive analysis and processing!",
+        )
+
+        if uploaded_files is not None and len(uploaded_files) > 0:
+            # Limit to 5 files at a time
+            if len(uploaded_files) > 5:
+                st.error(
+                    "⚠️ Maximum 5 files can be uploaded at once. Only the first 5 will be processed."
+                )
+                uploaded_files = uploaded_files[:5]
+
+            # Upload files via OpenAI Files API
+            uploaded_count = 0
+            failed_uploads = []
+
+            for uploaded_file in uploaded_files:
+                try:
+                    with st.spinner(f"Uploading {uploaded_file.name}..."):
+                        # Create file-like object from uploaded file
+                        file_content = uploaded_file.read()
+
+                        # Upload via agent gateway WITH SESSION ID for proper registration
+                        files = {
+                            "file": (
+                                uploaded_file.name,
+                                file_content,
+                                uploaded_file.type or "application/octet-stream",
+                            )
+                        }
+                        headers = {
+                            "Authorization": f"Bearer {st.session_state.api_key}"
+                        }
+
+                        # Include session_id so file is automatically registered with the agent's session
+                        data = {
+                            "purpose": "assistants",
+                            "session_id": st.session_state.response_session_id,  # Critical: Link file to session
+                        }
+
+                        response = requests.post(
+                            f"{AGENT_GATEWAY_URL}/files",
+                            files=files,
+                            data=data,
+                            headers=headers,
+                        )
+
+                        if response.status_code in [200, 201]:
+                            file_data = response.json()
+                            file_id = file_data.get("id")
+
+                            # Store uploaded file info in session state
+                            if "uploaded_files" not in st.session_state:
+                                st.session_state.uploaded_files = []
+
+                            st.session_state.uploaded_files.append(
+                                {
+                                    "id": file_id,
+                                    "name": uploaded_file.name,
+                                    "size": len(file_content),
+                                    "type": uploaded_file.type,
+                                }
+                            )
+
+                            # Store file info for next user message
+                            if "pending_file_info" not in st.session_state:
+                                st.session_state.pending_file_info = []
+                            st.session_state.pending_file_info.append(
+                                {"name": uploaded_file.name, "id": file_id}
+                            )
+
+                            uploaded_count += 1
+                            st.success(
+                                f"✅ {uploaded_file.name} uploaded (ID: `{file_id}`)"
+                            )
+                        else:
+                            failed_uploads.append(uploaded_file.name)
+                            st.error(
+                                f"❌ Failed to upload {uploaded_file.name}: {response.status_code}"
+                            )
+                            if response.text:
+                                st.error(response.text)
+
+                except Exception as e:
+                    failed_uploads.append(uploaded_file.name)
+                    st.error(f"Error uploading {uploaded_file.name}: {str(e)}")
+                    logger.error(
+                        f"File upload error for {uploaded_file.name}: {e}",
+                        exc_info=True,
+                    )
+
+            # Show summary after all uploads
+            if uploaded_count > 0:
+                st.info(
+                    f"📎 {uploaded_count} file(s) uploaded successfully and will be included in your next message"
+                )
+            if failed_uploads:
+                st.warning(f"⚠️ Failed to upload: {', '.join(failed_uploads)}")
+
+        # Show uploaded files list
+        if "uploaded_files" in st.session_state and st.session_state.uploaded_files:
+            st.divider()
+            st.subheader("📋 Uploaded Files")
+            for file in st.session_state.uploaded_files:
+                with st.expander(f"📄 {file['name']}", expanded=False):
+                    st.text(f"ID: {file['id']}")
+                    st.text(f"Size: {file['size']} bytes")
+                    st.text(f"Type: {file['type'] or 'unknown'}")
+
+        if st.button("Clear History"):
+            st.session_state.conversation_history = []
+            # Also clear uploaded files when clearing history
+            if "uploaded_files" in st.session_state:
+                st.session_state.uploaded_files = []
+            st.rerun()
+
+        # Logout button at bottom with full Keycloak token revocation
+        st.divider()
+        if st.button("🚪 Log Out", use_container_width=True, key="logout_bottom"):
+            logout()

@@ -1,0 +1,40 @@
+# infra/dockerfiles/Dockerfile.openwebui
+# This Dockerfile creates a custom, pre-warmed image for OpenWebUI.
+FROM ghcr.io/open-webui/open-webui:main
+
+# Switch to root user to install dependencies
+USER root
+
+# Install Python, pip, and git, which are necessary for the pre-warming script
+RUN apt-get update && apt-get install -y python3 python3-pip git --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+# Install the required Python libraries for model caching and runtime dependencies
+RUN pip3 install --no-cache-dir --break-system-packages sentence-transformers torch nltk
+
+# Pre-install Playwright browsers and dependencies
+RUN playwright install chromium && playwright install-deps chromium
+
+# Pre-download the NLTK tokenizer data
+RUN python3 -c "import nltk; nltk.download('punkt_tab')"
+
+# Copy the pre-warming script into the container
+COPY infra/dockerfiles/prewarm_openwebui.py /app/prewarm_openwebui.py
+
+# Run the script to download and cache the model.
+# This creates a new layer in the image with the model files.
+RUN python3 /app/prewarm_openwebui.py
+
+# Set the environment variable to ensure OpenWebUI uses the pre-warmed models.
+# This is the key step that guarantees the cached models are used.
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models
+
+# Create data folder
+RUN mkdir -p /app/backend/data
+RUN mkdir -p /app/backend/open_webui
+RUN mkdir -p /app/backend/open_webui/logs
+RUN chown -R 1000:1000 /app/backend/ /app/models
+
+# Switch back to the default non-root user for the application
+USER 1000
+
+# The original entrypoint and command of the base image will be used when the container starts.

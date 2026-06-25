@@ -1,0 +1,20 @@
+{{- if .Values.orchestration_service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-orchestration-service
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestration-service
+spec:
+  type: {{ .Values.orchestration_service.service.type }}
+  ports:
+    - port: {{ .Values.orchestration_service.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "agentic-framework.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestration-service
+{{- end }}

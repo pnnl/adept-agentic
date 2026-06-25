@@ -1,0 +1,156 @@
+================================================================================
+ASOPB TEST SUITE - FILE INDEX
+================================================================================
+
+Core Test Files (in /sessions/stoic-clever-ptolemy/asopb/tests/):
+
+1. __init__.py                          (empty package marker)
+
+2. conftest.py                          (15 KB)
+   - Shared pytest fixtures
+   - tmp_repo, tmp_repo_with_auth, tmp_repo_with_tools
+   - sample_config, evidence_store, sample_*_report
+   - minimal_agent_fixture_dir, agent_with_auth_fixture_dir
+
+3. test_models.py                       (19 KB, 609 lines, 28 tests)
+   - ControlScore: composite, floor enforcement
+   - DomainResult: aggregation, domain_score
+   - EvaluationReport: ASPI, gap_ratio, integrity
+   - FrameworkVersion: version_key generation
+   - ControlEvidence: hash deduplication
+   - RedTeamScenario/RedTeamReport construction
+
+4. test_scoring.py                      (22 KB, 667 lines, 19 tests)
+   - ASPI calculation and edge cases
+   - T1/T2 gap ratio analysis
+   - Stage classification (S1/S2/S3/S4)
+   - Domain profile generation
+   - Report delta comparison
+
+5. test_scanners.py                     (11 KB, 368 lines, 16 tests)
+   - AuthScanner pattern detection:
+     * JWT/OAuth/OIDC, identity providers
+     * RBAC/ABAC, session validation
+     * Unsafe Optional[str] parameters
+     * API keys, middleware, auth flags
+
+6. test_analyzers.py                    (9 KB, 284 lines, 16 tests)
+   - AnalyzerBase interface
+   - Tool availability checking (mocked)
+   - Graceful degradation
+   - Result creation and parsing
+
+7. test_domains.py                      (11 KB, 352 lines, 14 tests)
+   - D4 Identity evaluator control definitions
+   - Control scoring with evidence
+   - Floor enforcement
+   - Applicability checking
+   - Domain metadata and mappings
+
+8. test_evidence_store.py               (15 KB, 462 lines, 12 tests)
+   - Save/load evaluation roundtrip
+   - List and query evaluations
+   - Version history retrieval
+   - Evidence deduplication
+   - Report integrity verification
+   - Version delta calculation
+
+9. test_redteam.py                      (13 KB, 410 lines, 18 tests)
+   - RedTeamPluginBase execution
+   - SimulatorPluginBase lifecycle
+   - ReportIngesterBase parsing
+   - RedTeamRegistry management
+   - Plugin discovery and integration
+
+10. test_reports.py                     (12 KB, 310 lines, 27 tests)
+    - Report JSON serialization
+    - Evidence bundle export
+    - Report validity and bounds
+    - Metadata and domain handling
+    - Warnings and skipped analyzers
+
+11. README.md                           (comprehensive test documentation)
+
+12. INDEX.txt                           (this file)
+
+Fixture Directories:
+
+fixtures/minimal_agent/
+  - pyproject.toml
+  - src/agent.py
+  - src/tools.py
+
+fixtures/agent_with_auth/
+  - pyproject.toml
+  - src/agent.py
+  - src/auth.py (Keycloak JWT validation)
+  - src/tools.py (ACL filtering)
+  - docker-compose.yaml
+
+================================================================================
+TEST STATISTICS
+================================================================================
+
+Total Lines of Code:     3,462 lines
+Total Test Cases:        150 tests
+Total Test Classes:      34 classes
+Total Files:             11 (9 test files + conftest + init)
+
+Module Breakdown:
+  test_models.py         609 lines / 28 tests / 6 classes
+  test_scoring.py        667 lines / 19 tests / 5 classes
+  test_scanners.py       368 lines / 16 tests / 1 class
+  test_analyzers.py      284 lines / 16 tests / 6 classes
+  test_domains.py        352 lines / 14 tests / 4 classes
+  test_evidence_store.py 462 lines / 12 tests / 5 classes
+  test_redteam.py        410 lines / 18 tests / 6 classes
+  test_reports.py        310 lines / 27 tests / 7 classes
+
+================================================================================
+RUNNING THE TESTS
+================================================================================
+
+All tests:
+  $ pytest tests/
+
+Specific module:
+  $ pytest tests/test_models.py -v
+
+With async support:
+  $ pytest tests/ --asyncio-mode=auto
+
+Exclude LLM tests:
+  $ pytest tests/ -m "not llm"
+
+With coverage:
+  $ pytest tests/ --cov=asopb --cov-report=html
+
+================================================================================
+KEY FEATURES
+================================================================================
+
+✓ 150 comprehensive test cases
+✓ Deterministic (skip_llm=True)
+✓ Fixtures for isolation
+✓ Async/await support (pytest-asyncio)
+✓ Mock external tools
+✓ In-memory evidence store
+✓ Realistic fixture agents
+✓ Edge case coverage
+✓ Model validation
+✓ Report integrity testing
+
+================================================================================
+COVERAGE AREAS
+================================================================================
+
+Core Models        → 28 tests (ControlScore, DomainResult, Report, etc)
+Scoring Engine     → 19 tests (ASPI, gap ratio, stages, deltas)
+Scanners           → 16 tests (JWT, OAuth, RBAC, session, API keys, etc)
+Analyzers          → 16 tests (availability, graceful degradation)
+Domains (D4)       → 14 tests (controls, scoring, floor enforcement)
+Evidence Store     → 12 tests (save/load, integrity, dedup)
+Red-Team System    → 18 tests (plugins, simulators, ingesters)
+Reports            → 27 tests (serialization, export, bounds, metadata)
+
+================================================================================

@@ -1,0 +1,29 @@
+# infra/dockerfiles/Dockerfile.os-base
+FROM ubuntu:22.04
+
+# 0. Set Deb non-interactive
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1. Install common system dependencies
+RUN apt-get update
+RUN apt install software-properties-common -y
+RUN add-apt-repository universe
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl fonts-unifont \
+    python3.11 python3.11-venv python3.11-dev python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install the uv package manager
+RUN pip install --no-cache-dir uv
+
+# 3. Create the non-root user and working directory with fixed UID/GID for
+#    cross-image consistency (host volume mounts, init-data chown, etc.)
+ARG APP_UID=1200
+ARG APP_GID=1200
+RUN addgroup --system --gid ${APP_GID} appgroup && \
+    adduser --system --uid ${APP_UID} --ingroup appgroup appuser
+RUN mkdir -p /app && chown appuser:appgroup /app && chmod g+s /app
+WORKDIR /app
+

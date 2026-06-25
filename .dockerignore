@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+__pycache__/*
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# Git
+.git
+.gitignore
+
+# OS-specific
+.DS_Store
+
+# Project Structure
+data/
+**/data/
+temp/
+docs/
+#notebooks/
+#tests/
+blast_databases/
+README.md
+
+# Environment & Config
+#.env
+*.sqlite3
+
+# Logs & Caches
+*.log
+logs/
+.cache
+
+# Archives
+*.tar*
+*.gz
+*.bz2
+*.bzip2
+
+# IDE/Editor
+.vscode/
+.idea/

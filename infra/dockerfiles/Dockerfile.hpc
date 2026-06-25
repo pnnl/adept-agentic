@@ -1,0 +1,47 @@
+# infra/dockerfiles/Dockerfile.hpc
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+FROM ${DEPS_BASE_IMAGE}
+
+# Base image has USER appuser, but we need root for system packages
+USER root
+
+# 1. Install system dependencies for HPC tools (Java, Nextflow, BLAST, etc.)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    openjdk-21-jre openjdk-21-jdk-headless \
+    wget curl \
+    unzip \
+    procps \
+    ffmpeg \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Nextflow
+ENV NEXTFLOW_VERSION=25.04.4
+RUN curl -s https://get.nextflow.io | bash && mv nextflow /usr/local/bin/
+
+# Install NCBI BLAST+
+ENV BLAST_VERSION 2.15.0
+RUN curl -fsSL https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/${BLAST_VERSION}/ncbi-blast-${BLAST_VERSION}+-x64-linux.tar.gz | tar -xz -C /opt && \
+    ln -s /opt/ncbi-blast-${BLAST_VERSION}+/bin/* /usr/local/bin/
+
+# Switch back to appuser BEFORE copying code and installing packages
+USER appuser
+
+# Pre-download Whisper model (as appuser)
+RUN uv pip install yt-dlp openai-whisper
+RUN mkdir -p /app/.cache/whisper && \
+    /app/.venv/bin/python -c "import whisper; whisper.load_model('base', download_root='/app/.cache/whisper')"
+
+# 2. Copy the source code with explicit ownership
+COPY --chown=appuser:appgroup src/ ./src/
+
+# 3. Perform the editable install (runs as appuser)
+RUN uv pip install --no-cache-dir --editable .
+
+# No chown needed - all files created as appuser from the start!
+
+# 4. Define the runtime command
+# IMPORTANT: Use pre-built venv directly, NOT "uv run" which creates new env at runtime
+EXPOSE 8081
+CMD ["/app/.venv/bin/python", "-m", "agentic_framework_pkg.hpc_mcp_server.main"]

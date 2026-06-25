@@ -1,0 +1,14 @@
+apiVersion: v2
+name: {{NAME}}-mcp
+description: >-
+  Standalone Helm chart for {{DISPLAY_NAME}} MCP server stack.
+  Deploys Redis, {{NAME}}_mcp_server, and nginx reverse proxy.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: ADEPT Team
+keywords:
+  - {{NAME}}
+  - mcp
+  - adept

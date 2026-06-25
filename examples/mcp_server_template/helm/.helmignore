@@ -1,0 +1,17 @@
+# Patterns to ignore when packaging the Helm chart
+tests/
+*.md
+.env*
+Makefile
+Dockerfile
+docker-compose*.yaml
+scripts/
+{{NAME}}_mcp/
+*.py
+*.txt
+logs/
+certs/
+__pycache__/
+*.pyc
+.git/
+.gitignore

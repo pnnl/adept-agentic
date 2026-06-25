@@ -1,0 +1,67 @@
+# ADEPT Slurm HPC Cluster Configuration
+# ========================================
+# Defines SSH key lifecycle and connection parameters for remote HPC clusters.
+# Key material is NEVER exposed to the reasoning model — only metadata and status.
+
+clusters:
+  deception:
+    display_name: "Deception HPC"
+    host: deception.pnl.gov
+    ssh_port: 22
+    transport_modes: [ssh]
+    username: rigo160
+    # Per-user key resolution: /app/.ssh/{username}/adept_deception_ed25519
+    # Set DECEPTION_SSH_KEY_PATH to override for a specific user.
+    ssh_key:
+      private_key_path: /app/.ssh/{username}/adept_deception_ed25519
+      public_key_path: /app/.ssh/{username}/adept_deception_ed25519.pub
+      algorithm: ed25519
+      comment: "adept-mcp@deception"
+      # User must manually append the public key to ~/.ssh/authorized_keys
+      # on the cluster login node. The tool provides instructions but does
+      # not attempt remote key injection.
+      provisioning: manual_authorized_keys
+    default_partition: ""
+    default_account: ""
+    timeouts:
+      ssh: 30
+      command: 120
+
+  tahoma:
+    display_name: "Tahoma HPC"
+    host: tahoma.emsl.pnl.gov
+    ssh_port: 22
+    transport_modes: [ssh, rest]
+    username: rigo160
+    # Per-user key resolution: /app/.ssh/{username}/adept_tahoma_ed25519
+    ssh_key:
+      private_key_path: /app/.ssh/{username}/adept_tahoma_ed25519
+      public_key_path: /app/.ssh/{username}/adept_tahoma_ed25519.pub
+      algorithm: ed25519
+      comment: "adept-mcp@tahoma"
+      provisioning: manual_authorized_keys
+    auth:
+      method: pubkey_plus_password  # DOE 2FA: key + PNNL password
+      password_env_var: TAHOMA_PASSWORD
+    rest_api:
+      base_url: ""  # Set via TAHOMA_REST_API_URL env var if available
+      api_version: v0.0.41
+      auth_method: jwt  # jwt or token
+    default_partition: ""
+    default_account: ""
+    timeouts:
+      ssh: 30
+      rest: 30
+      command: 120
+
+# SSH Key Lifecycle Policy
+key_policy:
+  # Algorithm preference (ed25519 > ecdsa > rsa)
+  preferred_algorithm: ed25519
+  # Key rotation reminder (days since generation)
+  rotation_reminder_days: 365
+  # Minimum RSA key size (if RSA is used)
+  min_rsa_bits: 4096
+  # Whether to enforce known_hosts strict checking
+  strict_host_key_checking: true
+  known_hosts_path: /app/.ssh/known_hosts

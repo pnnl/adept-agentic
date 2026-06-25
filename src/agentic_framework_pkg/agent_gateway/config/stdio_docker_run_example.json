@@ -1,0 +1,19 @@
+{
+  "name": "my_docker_tool",
+  "description": "A tool that runs a command inside a Docker container.",
+  "args_schema": {
+    "input_arg": {
+      "type": "string",
+      "description": "An input argument for the tool."
+    }
+  },
+  "invocation": {
+    "protocol": "stdio",
+    "connection": {
+      "command": ["docker", "run", "--rm", "-i", "my_docker_image:latest", "my_tool_command"]
+    }
+  },
+  "acl": {
+    "global": true
+  }
+}

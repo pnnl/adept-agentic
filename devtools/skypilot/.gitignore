@@ -1,0 +1,12 @@
+# Per-context runtime state (SSH keys, SkyPilot cache, logs, generated inventory)
+contexts/*/.sky/
+contexts/*/.ssh/
+contexts/*/logs/
+contexts/*/inventory.ini
+contexts/*
+!contexts/.gitkeep
+
+# Legacy top-level state (kept during migration)
+.sky/
+.ssh/
+logs/

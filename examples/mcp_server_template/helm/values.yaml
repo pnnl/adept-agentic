@@ -1,0 +1,135 @@
+# Default values for {{NAME}}-mcp Helm chart
+
+# Override the chart name
+nameOverride: ""
+fullnameOverride: ""
+
+# Number of replicas
+replicaCount: 1
+
+# Global configuration
+global:
+  image:
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+# Image pull secrets for private registries
+imagePullSecrets: []
+
+# Redis configuration
+redis:
+  image:
+    repository: {{REGISTRY}}/redis
+    tag: 7-alpine
+  service:
+    port: 6379
+  auth:
+    enabled: false
+    password: ""
+  persistence:
+    enabled: false
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 500m
+    requests:
+      memory: 256Mi
+      cpu: 250m
+
+# MCP Server configuration
+mcpServer:
+  image:
+    repository: {{REGISTRY}}/{{NAME}}-mcp-server
+    tag: latest
+  service:
+    port: {{MCP_PORT}}
+  workers: 1
+  loggingLevel: DEBUG
+  healthProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  resources:
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+    requests:
+      memory: 1Gi
+      cpu: 500m
+  env:
+    # Additional environment variables
+    {}
+
+# Nginx reverse proxy configuration
+nginx:
+  image:
+    repository: {{REGISTRY}}/nginx
+    tag: alpine
+  service:
+    port: 80
+  allowedIPs:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+  trustedCIDR: "10.0.0.0/8"
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 200m
+    requests:
+      memory: 128Mi
+      cpu: 100m
+
+# Secrets configuration
+secrets:
+  # Optional Redis password (auto-generated if empty)
+  redisPassword: ""
+
+# Persistence configuration
+persistence:
+  sharedUploads:
+    enabled: true
+    storageClassName: ""  # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 10Gi
+  {{NAME}}Results:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 20Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  host: {{INGRESS_HOST}}
+  tls:
+    enabled: true
+    secretName: {{NAME}}-mcp-tls
+
+# Service account (optional)
+serviceAccount:
+  create: false
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext: {}
+
+# Security context
+securityContext: {}
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

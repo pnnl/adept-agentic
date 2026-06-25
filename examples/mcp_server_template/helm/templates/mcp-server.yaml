@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-mcp-server
+  labels:
+    {{- include "{{NAME}}-mcp.mcpServerLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "{{NAME}}-mcp.mcpServerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "{{NAME}}-mcp.mcpServerSelectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: mcp-server
+        image: "{{ .Values.mcpServer.image.repository }}:{{ .Values.mcpServer.image.tag | default .Values.global.image.tag }}"
+        imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        ports:
+        - name: mcp
+          containerPort: {{ .Values.mcpServer.service.port }}
+          protocol: TCP
+        env:
+        - name: REDIS_URL
+          value: {{ include "{{NAME}}-mcp.redisURL" . | quote }}
+        - name: {{NAME_UPPER}}_HOST
+          value: "0.0.0.0"
+        - name: {{NAME_UPPER}}_PORT
+          value: {{ .Values.mcpServer.service.port | quote }}
+        - name: LOGGING_LEVEL
+          value: {{ .Values.mcpServer.loggingLevel | quote }}
+        - name: {{NAME_UPPER}}_RESULTS_DIR
+          value: "/app/data/{{NAME}}/results"
+        - name: UPLOADED_FILES_DIR
+          value: "/app/data/uploaded_files"
+        - name: {{NAME_UPPER}}_WORKERS
+          value: {{ .Values.mcpServer.workers | quote }}
+        {{- range $key, $value := .Values.mcpServer.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        volumeMounts:
+        - name: shared-uploads
+          mountPath: /app/data/uploaded_files
+        - name: {{NAME}}-results
+          mountPath: /app/data/{{NAME}}/results
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: mcp
+          initialDelaySeconds: {{ .Values.mcpServer.healthProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.mcpServer.healthProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.mcpServer.healthProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.mcpServer.healthProbe.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: mcp
+          initialDelaySeconds: {{ .Values.mcpServer.healthProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.mcpServer.healthProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.mcpServer.healthProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.mcpServer.healthProbe.failureThreshold }}
+        resources:
+          {{- toYaml .Values.mcpServer.resources | nindent 10 }}
+      volumes:
+      - name: shared-uploads
+        {{- if .Values.persistence.sharedUploads.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "{{NAME}}-mcp.fullname" . }}-shared-uploads
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      - name: {{NAME}}-results
+        {{- if .Values.persistence.{{NAME}}Results.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "{{NAME}}-mcp.fullname" . }}-{{NAME}}-results
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-mcp-server
+  labels:
+    {{- include "{{NAME}}-mcp.mcpServerLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.mcpServer.service.port }}
+    targetPort: mcp
+    protocol: TCP
+    name: mcp
+  selector:
+    {{- include "{{NAME}}-mcp.mcpServerSelectorLabels" . | nindent 4 }}

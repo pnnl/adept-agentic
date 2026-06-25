@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - npm install -g aws-cdk
+      - pip install -r infra/aws/cdk/requirements.txt
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+  build:
+    commands:
+      - echo "Building and pushing Docker images..."
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - |
+        for SERVICE in mcp_server streamlit_app hpc_mcp_server sandbox_mcp_server; do
+          ECR_REPO_URI=$(aws ecr describe-repositories --repository-names "${SERVICE}-repo" --query "repositories[0].repositoryUri" --output text)
+          docker build -t $ECR_REPO_URI:$COMMIT_HASH -f Dockerfile.$SERVICE .
+          docker push $ECR_REPO_URI:$COMMIT_HASH
+        done
+  post_build:
+    commands:
+      - echo "Deploying ECS Application Stack with CDK..."
+      - cd infra/aws/cdk
+      - |
+        cdk deploy AgenticFrameworkEcsStack --require-approval never \
+          --parameters mcp_server_image=$(aws ecr describe-repositories --repository-names "mcp_server-repo" --query "repositories[0].repositoryUri" --output text):$COMMIT_HASH \
+          --parameters streamlit_app_image=$(aws ecr describe-repositories --repository-names "streamlit_app-repo" --query "repositories[0].repositoryUri" --output text):$COMMIT_HASH \
+          --parameters hpc_mcp_server_image=$(aws ecr describe-repositories --repository-names "hpc_mcp_server-repo" --query "repositories[0].repositoryUri" --output text):$COMMIT_HASH \
+          --parameters sandbox_mcp_server_image=$(aws ecr describe-repositories --repository-names "sandbox_mcp_server-repo" --query "repositories[0].repositoryUri" --output text):$COMMIT_HASH

@@ -1,0 +1,56 @@
+{{- if .Values.persistence.sharedUploads.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-shared-uploads
+  labels:
+    {{- include "{{NAME}}-mcp.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.sharedUploads.accessMode }}
+  {{- if .Values.persistence.sharedUploads.storageClassName }}
+  storageClassName: {{ .Values.persistence.sharedUploads.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.sharedUploads.size }}
+{{- end }}
+
+{{- if .Values.persistence.{{NAME}}Results.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-{{NAME}}-results
+  labels:
+    {{- include "{{NAME}}-mcp.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.{{NAME}}Results.accessMode }}
+  {{- if .Values.persistence.{{NAME}}Results.storageClassName }}
+  storageClassName: {{ .Values.persistence.{{NAME}}Results.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.{{NAME}}Results.size }}
+{{- end }}
+
+{{- if .Values.redis.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-redis-data
+  labels:
+    {{- include "{{NAME}}-mcp.redisLabels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.redis.persistence.storageClassName }}
+  storageClassName: {{ .Values.redis.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size | default "1Gi" }}
+{{- end }}

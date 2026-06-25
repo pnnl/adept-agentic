@@ -1,0 +1,308 @@
+# Langfuse v3 Observability Stack for ADEPT Framework
+# Based on official Langfuse v3.134.0 docker-compose configuration
+# Modified for ADEPT integration with local image builds and port conflict avoidance
+
+services:
+  # PostgreSQL database for Langfuse metadata
+  langfuse-postgres:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.langfuse-postgres
+    image: agentic-framework-langfuse-postgres:latest
+    container_name: langfuse-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${LANGFUSE_POSTGRES_USER:-langfuse}
+      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:-langfuse_secure_password}
+      POSTGRES_DB: ${LANGFUSE_POSTGRES_DB:-langfuse}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"  # Avoid conflict with main Postgres (5432)
+    networks:
+      - adept_integration_network
+    labels:
+      - "tier=data"
+      - "security.role=observability-database"
+      - "security.isolation=strict"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ClickHouse for analytics and time-series data (required for v3)
+  langfuse-clickhouse:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.langfuse-clickhouse
+    image: agentic-framework-langfuse-clickhouse:latest
+    container_name: langfuse-clickhouse
+    restart: always
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse_secure_password}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - "8124:8123"  # HTTP interface (avoid conflict with default 8123)
+      - "9001:9000"  # Native protocol (avoid conflict with default 9000)
+    networks:
+      - adept_integration_network
+    labels:
+      - "tier=data"
+      - "security.role=observability-analytics"
+      - "security.isolation=strict"
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  # Redis for caching and queue management (required for v3)
+  langfuse-redis:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.langfuse-redis
+    image: agentic-framework-langfuse-redis:latest
+    container_name: langfuse-redis
+    restart: always
+    command: >
+      --requirepass ${LANGFUSE_REDIS_PASSWORD:-redis_secure_password}
+    volumes:
+      - langfuse_redis_data:/data
+    ports:
+      - "6381:6379"  # Avoid conflict with main Redis (6379)
+    networks:
+      - adept_integration_network
+    labels:
+      - "tier=data"
+      - "security.role=observability-cache"
+      - "security.isolation=strict"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "-a", "${LANGFUSE_REDIS_PASSWORD:-redis_secure_password}", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  # MinIO for object storage (optional but recommended for media/exports)
+  langfuse-minio:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.langfuse-minio
+    image: agentic-framework-langfuse-minio:latest
+    container_name: langfuse-minio
+    restart: always
+    entrypoint: sh
+    # Create the 'langfuse' bucket before starting the service
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: ${LANGFUSE_MINIO_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD:-minio_secure_password}
+    volumes:
+      - langfuse_minio_data:/data
+    ports:
+      - "9091:9000"  # API (avoid conflict with default 9000)
+      - "9092:9001"  # Console (avoid conflict with default 9001)
+    networks:
+      - adept_integration_network
+    labels:
+      - "tier=data"
+      - "security.role=observability-storage"
+      - "security.isolation=strict"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+
+  # Langfuse Worker for background processing (required for v3)
+  langfuse-worker:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.langfuse-worker
+    image: agentic-framework-langfuse-worker:latest
+    container_name: langfuse-worker
+    restart: always
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    ports:
+      - "3030:3030"  # Worker metrics port
+    environment: &langfuse-worker-env
+      # Core Configuration
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3001}
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD:-langfuse_secure_password}@langfuse-postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-changeme_32_char_minimum_salt}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+
+      # Telemetry
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_EXPERIMENTAL:-true}
+      LANGFUSE_DEBUG: ${LANGFUSE_DEBUG:-false}
+
+      # ClickHouse Configuration (required for v3)
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-langfuse}
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse_secure_password}
+      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
+
+      # Redis Configuration (required for v3)
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${LANGFUSE_REDIS_PASSWORD:-redis_secure_password}
+      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
+
+      # S3/MinIO Configuration (disabled for self-hosted, using local storage)
+      LANGFUSE_USE_AZURE_BLOB: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_ENABLED: ${LANGFUSE_S3_EVENT_UPLOAD_ENABLED:-false}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENABLED: ${LANGFUSE_S3_MEDIA_UPLOAD_ENABLED:-false}
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}
+
+      # S3/MinIO settings (required even when disabled)
+      # LangFuse v3 uses S3/blob storage for trace data, so MinIO must be configured
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
+      # AWS SDK requires a region to be set even if using MinIO (dummy value, no AWS account needed)
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-us-east-1}
+      # MinIO credentials (local S3-compatible storage)
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_MINIO_USER:-minio_admin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:-minio_secure_password}
+      # MinIO endpoint (internal docker network)
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://langfuse-minio:9000}
+      # Force path-style URLs for MinIO compatibility
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+
+      # Email Configuration (optional)
+      EMAIL_FROM_ADDRESS: ${LANGFUSE_EMAIL_FROM:-}
+      SMTP_CONNECTION_URL: ${LANGFUSE_SMTP_URL:-}
+
+      # OpenTelemetry Configuration for v3
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://langfuse-web:3000}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://langfuse-web:3000/v1/traces}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_EXPORTER_OTLP_COMPRESSION: ${OTEL_EXPORTER_OTLP_COMPRESSION:-gzip}
+      LANGFUSE_BASEURL_OTEL: ${LANGFUSE_BASEURL_OTEL:-http://langfuse-web:3000}
+    networks:
+      - application_net  # Access to agent_gateway for evaluations/trace processing
+      - adept_integration_network  # Access to backend services
+    labels:
+      - "tier=application"
+      - "security.role=observability-worker"
+      - "security.isolation=moderate"
+
+  # Langfuse Web Application and API
+  langfuse-web:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.langfuse-web
+    image: agentic-framework-langfuse-web:latest
+    container_name: langfuse-web
+    restart: always
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    volumes:
+      # Mount .env file for credential loading (CREDENTIAL DRIFT FIX)
+      # Allows headless_init_langfuse.py to read existing credentials
+      # and prevent regeneration on every restart
+      - ../../../.env:/app/.env:ro
+    ports:
+      - "3001:3000"  # Avoid conflict with other services
+    environment:
+      <<: *langfuse-worker-env
+      # Additional web-specific configuration
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-changeme_32_char_minimum_secret}
+      # Fix Next.js binding to ensure it listens on all interfaces
+      HOSTNAME: "0.0.0.0"
+      # Enable debug logging
+      DEBUG: ${LANGFUSE_DEBUG:-false}
+      NODE_ENV: ${NODE_ENV:-production}
+
+      # Cloud region configuration (required by Next.js frontend, even for self-hosted)
+      # Empty string for self-hosted installations, or set to AWS region if using cloud
+      NEXT_PUBLIC_LANGFUSE_CLOUD_REGION: ${LANGFUSE_CLOUD_REGION:-}
+
+      # Optional initialization settings for first-time setup
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-ADEPT}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-ADEPT-Default}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@adept.local}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-admin_password}
+
+      # Existing credentials (for idempotent initialization)
+      # These allow headless_init_langfuse.py to read existing credentials from .env
+      # and prevent regeneration on every restart
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+
+      # ADEPT Integration
+      ADEPT_FRAMEWORK_URL: http://orchestration_service:8084
+      ADEPT_GATEWAY_URL: http://agent_gateway:8081
+    networks:
+      - frontend_net  # Access to nginx_proxy (if needed)
+      - application_net  # Access to agent_gateway for trace replay API calls
+      - adept_integration_network  # Access to backend services
+    labels:
+      - "tier=frontend"
+      - "security.role=observability-ui"
+      - "security.isolation=low"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# Volumes
+volumes:
+  langfuse_postgres_data:
+    driver: local
+  langfuse_clickhouse_data:
+    driver: local
+  langfuse_clickhouse_logs:
+    driver: local
+  langfuse_redis_data:
+    driver: local
+  langfuse_minio_data:
+    driver: local
+
+# Networks - Three-tier segmentation (Session 50 Phase 1.1)
+networks:
+  # Frontend network: User-facing services
+  frontend_net:
+    name: adept_frontend_network
+    external: true
+
+  # Application network: Business logic services
+  application_net:
+    name: adept_application_network
+    external: true
+
+  # RAGFlow backend network: Langfuse backend services + ADEPT telemetry push
+  adept_integration_network:
+    name: adept_integration_network
+    external: true

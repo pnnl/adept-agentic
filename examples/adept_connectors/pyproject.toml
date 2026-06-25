@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "adept-connectors"
+version = "0.1.0"
+description = "Unified connector library for the ADEPT platform — auth, HTTP clients, session management, and per-connector integrations"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-2-Clause"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Paul Rigor", email = "paul.rigor@pnnl.gov" },
+]
+keywords = [
+    "adept",
+    "agentic",
+    "ai-agent",
+    "connector",
+    "keycloak",
+    "mcp",
+    "openai-compatible",
+    "scientific-computing",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.27.0",
+    "pydantic-settings>=2.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+claude = [
+    "fastmcp>=2.11.3,<3.0.0",
+]
+chatgpt = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
+proxy = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
+admin = [
+    "python-keycloak>=4.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "respx>=0.22.0",
+]
+all = [
+    "adept-connectors[claude,chatgpt,proxy,admin]",
+]
+
+[project.urls]
+Homepage = "https://github.com/pnnl/adept-agentic/wiki"
+Repository = "https://github.com/pnnl/adept-agentic"
+Documentation = "https://github.com/pnnl/adept-agentic/wiki/ADEPT-Connectors"
+Changelog = "https://github.com/pnnl/adept-agentic/blob/main/examples/adept_connectors/CHANGELOG.md"
+Issues = "https://github.com/pnnl/adept-agentic/issues"
+
+[project.scripts]
+adept-auth-proxy = "adept_connectors.connectors.generic.cli:main"
+adept-claude-connector = "adept_connectors.connectors.claude.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/adept_connectors"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "unit: fast unit tests with no external dependencies",
+    "integration: tests requiring a running ADEPT stack (no LLM)",
+    "e2e: tests requiring a running ADEPT stack WITH LLM inference",
+    "uat: UAT tests for macbook desktop validation through nginx HTTPS",
+    "stdio_docker: STDIO transport tests requiring Docker and ADEPT network",
+    "stdio_integration: STDIO integration tests (Docker + ADEPT stack, no LLM)",
+    "stdio_e2e: STDIO E2E tests (Docker + ADEPT stack + LLM inference)",
+]

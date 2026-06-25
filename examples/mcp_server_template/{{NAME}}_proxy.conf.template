@@ -1,0 +1,47 @@
+# Nginx reverse proxy for {{DISPLAY_NAME}} MCP server
+# Provides IP-restricted MCP access with SSE streaming support.
+
+upstream mcp_backend {
+    server ${MCP_SERVER_HOST}:${MCP_SERVER_PORT};
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    # Health check — unrestricted
+    location /health {
+        access_log off;
+        return 200 '{"status":"ok","proxy":"{{NAME}}"}';
+        add_header Content-Type application/json;
+    }
+
+    # MCP endpoint — IP-restricted, streaming-ready
+    location /mcp {
+        # Defense-in-depth: restrict to ADEPT Docker networks
+        allow 10.0.0.0/8;
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        deny all;
+
+        proxy_pass http://mcp_backend/mcp;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # SSE streaming support (critical for MCP)
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        client_max_body_size 50m;
+    }
+
+    # Catch-all
+    location / {
+        return 404 '{"error":"Not found","endpoints":["/health","/mcp"]}';
+        add_header Content-Type application/json;
+    }
+}

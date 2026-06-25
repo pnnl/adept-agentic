@@ -1,0 +1,497 @@
+# templates/deployment.yaml
+{{- /*
+Helper to generate a comprehensive NO_PROXY value.
+It combines the user-defined list from values.yaml with the dynamically generated
+internal service names for this release. This ensures that intra-cluster
+communication correctly bypasses any configured HTTP/HTTPS proxy.
+*/}}
+{{- $fullName := include "agentic-framework.fullname" . -}}
+{{- $namespace := .Values.namespace | default .Release.Namespace -}}
+{{- $noProxyList := .Values.global.proxy.noProxy | default list -}}
+{{- $internalServices := list -}}
+{{- if .Values.mcp_server.enabled -}}
+  {{- $internalServices = append $internalServices (printf "%s-mcp-server" $fullName) -}}
+  {{- $internalServices = append $internalServices (printf "%s-mcp-server.%s" $fullName $namespace) -}}
+{{- end -}}
+{{- if .Values.streamlit_app_v2.enabled -}}
+  {{- $internalServices = append $internalServices (printf "%s-streamlit-app" $fullName) -}}
+  {{- $internalServices = append $internalServices (printf "%s-streamlit-app.%s" $fullName $namespace) -}}
+{{- end -}}
+{{- if .Values.hpc_mcp_server.enabled -}}
+  {{- $internalServices = append $internalServices (printf "%s-hpc-mcp-server" $fullName) -}}
+  {{- $internalServices = append $internalServices (printf "%s-hpc-mcp-server.%s" $fullName $namespace) -}}
+{{- end -}}
+{{- if .Values.sandbox_mcp_server.enabled -}}
+  {{- $internalServices = append $internalServices (printf "%s-sandbox-mcp-server" $fullName) -}}
+  {{- $internalServices = append $internalServices (printf "%s-sandbox-mcp-server.%s" $fullName $namespace) -}}
+{{- end -}}
+{{- $fullNoProxyList := concat $noProxyList $internalServices -}}
+{{- $noProxyValue := join "," $fullNoProxyList -}}
+
+{{- if .Values.keycloak.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-keycloak
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: keycloak
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: {{ .Values.keycloak.admin.user }}
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: keycloak-admin-password
+            - name: KC_DB
+              value: "postgres"
+            - name: KC_DB_URL_HOST
+              value: "{{ include "agentic-framework.fullname" . }}-postgres"
+            - name: KC_DB_USERNAME
+              value: {{ .Values.postgres.user }}
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: postgres-password
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+{{- end }}
+
+{{- if .Values.mcp_server.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-mcp-server
+  namespace: {{ .Values.namespace | default .Release.Namespace }} # <--- ADDED: Explicitly set namespace for the Deployment
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mcp-server
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-server
+    spec:
+      {{- if .Values.imagePullSecrets }} # <--- ADDED: Conditional check for imagePullSecrets
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }} # <--- ADDED: Inject imagePullSecrets
+      {{- end }}
+      containers:
+        - name: mcp-server
+          image: "{{ .Values.mcp_server.image.repository }}:{{ .Values.mcp_server.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.mcp_server.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcp_server.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentic-framework.fullname" . }}-config
+            - secretRef:
+                name: {{ if .Values.secrets.create }}{{ include "agentic-framework.fullname" . }}-secrets{{ else }}{{ .Values.secrets.existingSecretName }}{{ end }}
+                # The secretRef here relies on the secret being in the same namespace as the pod.
+                # If you need to reference a secret from a *different* namespace as an environment variable,
+                # you would add 'namespace: class' here (but only for envFrom/env valueFrom, not volumeMounts)
+                # For this chart, since both pods and secrets will be in 'class', this isn't strictly needed
+                # unless you explicitly want to allow cross-namespace secret references for envFrom.
+          env:
+            {{- if .Values.global.proxy.httpProxy }}
+            - name: HTTP_PROXY
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            - name: http_proxy
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            {{- end }}
+            {{- if .Values.global.proxy.httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            - name: https_proxy
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            {{- end }}
+            {{- if $noProxyValue }}
+            - name: NO_PROXY
+              value: {{ $noProxyValue | quote }}
+            - name: no_proxy
+              value: {{ $noProxyValue | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: shared-uploads
+              mountPath: /app/data/uploaded_files
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-data
+        - name: shared-uploads
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-shared-uploads
+---
+{{- end }}
+{{- if .Values.streamlit_app_v2.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-streamlit-app
+  namespace: {{ .Values.namespace | default .Release.Namespace }} # <--- ADDED: Explicitly set namespace for the Deployment
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: streamlit-app
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: streamlit-app
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: streamlit-app
+    spec:
+      {{- if .Values.imagePullSecrets }} # <--- ADDED: Conditional check for imagePullSecrets
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }} # <--- ADDED: Inject imagePullSecrets
+      {{- end }}
+      containers:
+        - name: streamlit-app
+          image: "{{ .Values.streamlit_app_v2.image.repository }}:{{ .Values.streamlit_app_v2.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.streamlit_app_v2.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.streamlit_app_v2.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentic-framework.fullname" . }}-config
+            - secretRef:
+                name: {{ if .Values.secrets.create }}{{ include "agentic-framework.fullname" . }}-secrets{{ else }}{{ .Values.secrets.existingSecretName }}{{ end }}
+          env:
+            - name: DEFAULT_MCP_SERVER_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-mcp-server:{{ .Values.mcp_server.service.port }}/mcp"
+            - name: HPC_MCP_SERVER_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-hpc-mcp-server:{{ .Values.hpc_mcp_server.service.port }}/mcp"
+            - name: SANDBOX_MCP_SERVER_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-sandbox-mcp-server:{{ .Values.sandbox_mcp_server.service.port }}/mcp"
+            {{- if .Values.global.proxy.httpProxy }}
+            - name: HTTP_PROXY
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            - name: http_proxy
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            {{- end }}
+            {{- if .Values.global.proxy.httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            - name: https_proxy
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            {{- end }}
+            {{- if $noProxyValue }}
+            - name: NO_PROXY
+              value: {{ $noProxyValue | quote }}
+            - name: no_proxy
+              value: {{ $noProxyValue | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: shared-uploads
+              mountPath: /app/data/uploaded_files
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-data
+        - name: shared-uploads
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-shared-uploads
+---
+{{- end }}
+{{- if .Values.hpc_mcp_server.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-hpc-mcp-server
+  namespace: {{ .Values.namespace | default .Release.Namespace }} # <--- ADDED: Explicitly set namespace for the Deployment
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hpc-mcp-server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: hpc-mcp-server
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: hpc-mcp-server
+    spec:
+      {{- if .Values.imagePullSecrets }} # <--- ADDED: Conditional check for imagePullSecrets
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }} # <--- ADDED: Inject imagePullSecrets
+      {{- end }}
+      containers:
+        - name: hpc-mcp-server
+          image: "{{ .Values.hpc_mcp_server.image.repository }}:{{ .Values.hpc_mcp_server.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.hpc_mcp_server.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.hpc_mcp_server.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentic-framework.fullname" . }}-config
+            - secretRef:
+                name: {{ .Values.secrets.existingSecretName }}
+          env:
+            - name: ORCHESTRATION_SERVICE_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-orchestration-service:{{ .Values.orchestration_service.service.port }}"
+            {{- if .Values.global.proxy.httpProxy }}
+            - name: HTTP_PROXY
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            - name: http_proxy
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            {{- end }}
+            {{- if .Values.global.proxy.httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            - name: https_proxy
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            {{- end }}
+            {{- if $noProxyValue }}
+            - name: NO_PROXY
+              value: {{ $noProxyValue | quote }}
+            - name: no_proxy
+              value: {{ $noProxyValue | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: shared-uploads
+              mountPath: /app/data/uploaded_files
+            - name: blast-databases
+              mountPath: /blast_databases
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-data
+        - name: shared-uploads
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-shared-uploads
+        - name: blast-databases
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-blast-databases
+---
+{{- end }}
+{{- if .Values.sandbox_mcp_server.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-sandbox-mcp-server
+  namespace: {{ .Values.namespace | default .Release.Namespace }} # <--- ADDED: Explicitly set namespace for the Deployment
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox-mcp-server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sandbox-mcp-server
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sandbox-mcp-server
+    spec:
+      {{- if .Values.imagePullSecrets }} # <--- ADDED: Conditional check for imagePullSecrets
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }} # <--- ADDED: Inject imagePullSecrets
+      {{- end }}
+      {{- if eq (lower .Values.sandbox_mcp_server.backend) "kubernetes" }}
+      serviceAccountName: {{ include "agentic-framework.fullname" . }}-sandbox-sa
+      {{- end }}
+      containers:
+        - name: sandbox-mcp-server
+          image: "{{ .Values.sandbox_mcp_server.image.repository }}:{{ .Values.sandbox_mcp_server.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.sandbox_mcp_server.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          {{- if eq (lower .Values.sandbox_mcp_server.backend) "docker" }}
+          securityContext:
+            privileged: {{ .Values.sandbox_mcp_server.dockerBackend.privileged }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.sandbox_mcp_server.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentic-framework.fullname" . }}-config
+            - secretRef:
+                name: {{ if .Values.secrets.create }}{{ include "agentic-framework.fullname" . }}-secrets{{ else }}{{ .Values.secrets.existingSecretName }}{{ end }}
+          env:
+            - name: SANDBOX_BACKEND
+              value: {{ .Values.sandbox_mcp_server.backend | lower | quote }}
+            {{- if eq (lower .Values.sandbox_mcp_server.backend) "kubernetes" }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DATA_PVC_NAME
+              value: {{ include "agentic-framework.fullname" . }}-data
+            - name: UPLOADS_PVC_NAME
+              value: {{ include "agentic-framework.fullname" . }}-shared-uploads
+            {{- end }}
+            {{- if .Values.global.proxy.httpProxy }}
+            - name: HTTP_PROXY
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            - name: http_proxy
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            {{- end }}
+            {{- if .Values.global.proxy.httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            - name: https_proxy
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            {{- end }}
+            {{- if $noProxyValue }}
+            - name: NO_PROXY
+              value: {{ $noProxyValue | quote }}
+            - name: no_proxy
+              value: {{ $noProxyValue | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: shared-uploads
+              mountPath: /app/data/uploaded_files
+            {{- if eq (lower .Values.sandbox_mcp_server.backend) "docker" }}
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-data
+        - name: shared-uploads
+          persistentVolumeClaim:
+            claimName: {{ include "agentic-framework.fullname" . }}-shared-uploads
+        {{- if eq (lower .Values.sandbox_mcp_server.backend) "docker" }}
+        - name: docker-socket
+          hostPath:
+            path: {{ .Values.sandbox_mcp_server.dockerBackend.socketPath }}
+        {{- end }}
+{{- end }}
+
+{{- if .Values.orchestration_service.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-orchestration-service
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestration-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: orchestration-service
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: orchestration-service
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: orchestration-service
+          image: "{{ .Values.orchestration_service.image.repository }}:{{ .Values.orchestration_service.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.orchestration_service.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.orchestration_service.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentic-framework.fullname" . }}-config
+            - secretRef:
+                name: {{ if .Values.secrets.create }}{{ include "agentic-framework.fullname" . }}-secrets{{ else }}{{ .Values.secrets.existingSecretName }}{{ end }}
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ include "agentic-framework.fullname" . }}-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.db }}"
+            - name: KEYCLOAK_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-keycloak:{{ .Values.keycloak.service.port }}"
+            - name: KEYCLOAK_REALM
+              value: "{{ .Values.keycloak.realm }}"
+            - name: GATEWAY_REGISTRY_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-gateway-registry:{{ .Values.gateway_registry.service.port }}"
+            {{- if .Values.global.proxy.httpProxy }}
+            - name: HTTP_PROXY
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            - name: http_proxy
+              value: {{ .Values.global.proxy.httpProxy | quote }}
+            {{- end }}
+            {{- if .Values.global.proxy.httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            - name: https_proxy
+              value: {{ .Values.global.proxy.httpsProxy | quote }}
+            {{- end }}
+            {{- if $noProxyValue }}
+            - name: NO_PROXY
+              value: {{ $noProxyValue | quote }}
+            - name: no_proxy
+              value: {{ $noProxyValue | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

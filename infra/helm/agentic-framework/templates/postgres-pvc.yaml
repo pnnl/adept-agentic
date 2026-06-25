@@ -1,0 +1,17 @@
+{{- if and .Values.postgres.enabled .Values.postgres.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-postgres-data
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.postgres.persistence.accessMode }}
+  {{- if .Values.postgres.persistence.storageClassName }}
+  storageClassName: {{ .Values.postgres.persistence.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+{{- end }}

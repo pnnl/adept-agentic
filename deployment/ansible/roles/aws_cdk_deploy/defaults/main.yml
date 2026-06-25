@@ -1,0 +1,12 @@
+---
+# Default variables for aws_cdk_deploy role
+# These can be overridden by inventory or extra vars
+
+# CDK deployment timeout (seconds)
+cdk_deploy_timeout: 1800  # 30 minutes
+
+# CDK bootstrap settings
+cdk_auto_bootstrap: true
+
+# Output file locations
+cdk_outputs_dir: "/tmp"

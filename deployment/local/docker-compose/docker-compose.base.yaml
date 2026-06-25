@@ -1,0 +1,491 @@
+# docker-compose.base.yaml
+# Defines stable, third-party services and NEW base images for optimized builds.
+services:
+  # --- TIER 1: OS BASE IMAGE ---
+  os-base:
+    image: agentic-framework-os-base:latest
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.os-base
+    deploy:
+      replicas: 0
+    profiles: ["base-build"]
+
+  # --- TIER 2: DEPENDENCIES BASE IMAGE ---
+  deps-base:
+    image: agentic-framework-deps-base:latest
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.deps-base
+    depends_on:
+      - os-base
+    deploy:
+      replicas: 0
+    profiles: ["base-build"]
+
+  # --- THIRD-PARTY AND PRE-WARMED SERVICES ---
+  vector_db_server:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.vector_db_server
+    platform: linux/amd64
+    container_name: vector_db_server
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../../../data/vector_db_persistence:/chroma/data
+    command: "run --host 0.0.0.0 --port 8001 --path /chroma/data"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/api/v2/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - data_net
+      - application_net  # RAG services (mcp_server, orchestration_service, streamlit)
+    labels:
+      - "tier=data"
+      - "security.role=vector-database"
+      - "security.isolation=strict"
+    profiles: ["apps"]
+
+  keycloak:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.keycloak
+    container_name: keycloak
+    ports:
+      - "8180:8180"
+      - "9000:9000"
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_DB=postgres
+      - KC_DB_URL_HOST=postgres
+      - KC_DB_USERNAME=${POSTGRES_USER:-admin}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - KC_HTTP_PORT=8180
+      - KC_HEALTH_ENABLED=true
+      # Frontend URL configuration for HTTPS reverse proxy (Nginx)
+      # Keycloak 26.x uses v2 hostname configuration
+      # No explicit KC_HOSTNAME - derive from X-Forwarded-Host header dynamically
+      - KC_HOSTNAME_STRICT=false
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HTTP_ENABLED=true
+      # Extended token lifetimes for better user experience
+      - KC_SPI_TOKEN_ACCESS_TOKEN_LIFESPAN=3600s  # 1 hour (default: 5 minutes)
+      - KC_SPI_TOKEN_ACCESS_TOKEN_LIFESPAN_FOR_IMPLICIT_FLOW=1800s  # 30 minutes
+      - KC_SPI_TOKEN_SESSION_IDLE_TIMEOUT=7200s  # 2 hours
+      - KC_SPI_TOKEN_SESSION_MAX_LIFESPAN=28800s  # 8 hours
+    command: "start-dev"
+    networks:
+      - data_net
+      - application_net  # Keycloak needs to be accessible by agent_gateway for auth
+    labels:
+      - "tier=data"
+      - "security.role=identity"
+      - "security.isolation=moderate"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["bootstrap", "apps"]
+
+  redis:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data  # Persistent volume for RDB snapshots
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data_net
+    labels:
+      - "tier=data"
+      - "security.role=database"
+      - "security.isolation=strict"
+    restart: unless-stopped
+    profiles: ["bootstrap", "apps"]
+
+  n8n:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    env_file:
+      - .env
+      - .env-keycloak-credentials-dir/.env-keycloak-credentials
+    environment:
+      - GENERIC_TIMEZONE=America/Los_Angeles
+      - KEYCLOAK_CLIENT_ID=n8n-client
+      - KEYCLOAK_CLIENT_SECRET=${N8N_CLIENT_SECRET}
+    networks:
+      - frontend_net
+      - application_net  # Needs agent_gateway API access
+    labels:
+      - "tier=frontend"
+      - "security.isolation=external-service"
+    restart: unless-stopped
+    profiles: ["apps"]
+
+  openwebui:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.openwebui
+    container_name: openwebui
+    ports:
+      - "8902:8080"
+    volumes:
+      - openwebui_data:/app/backend/data
+    secrets:
+      - OPENWEBUI_SERVICE_API_KEY
+    env_file:
+      - .env
+      - .env-keycloak-credentials-dir/.env-keycloak-credentials
+    environment:
+      - WEBUI_SECRET_KEY=your_super_secret_key_change_me
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - CHROMA_DB_URL=http://vector_db_server:8001
+      - DATABASE_URL=sqlite:///db.sqlite3
+      - SENTENCE_TRANSFORMERS_HOME=/app/models
+      - KEYCLOAK_CLIENT_ID=openwebui-client
+      - KEYCLOAK_CLIENT_SECRET=${OPENWEBUI_CLIENT_SECRET}
+      # OpenAI API configuration to connect to Agent Gateway
+      - OPENAI_API_BASE_URL=http://agent_gateway:8081/v1
+      # OPENAI_API_KEY is read from /run/secrets/OPENWEBUI_SERVICE_API_KEY at
+      # container startup (see command override below). Do NOT use
+      # ${OPENWEBUI_SERVICE_API_KEY} here — it resolves from the compose
+      # context (.env), not from env_file or secrets, causing an empty value.
+      # Alternative OpenWebUI environment variable names
+      - OPENAI_BASE_URL=http://agent_gateway:8081/v1
+    command: >
+      bash -c 'export OPENAI_API_KEY=$$(cat /run/secrets/OPENWEBUI_SERVICE_API_KEY) && exec bash start.sh'
+    networks:
+      - frontend_net
+      - application_net  # Needs agent_gateway and vector_db access
+    labels:
+      - "tier=frontend"
+      - "security.isolation=external-service"
+    restart: unless-stopped
+    profiles: ["apps"]
+
+
+
+  postgres:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.postgres
+    container_name: postgres
+    profiles: ["bootstrap", "apps"]
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    command: postgres -c max_connections=300
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data_net
+    labels:
+      - "tier=data"
+      - "security.role=database"
+      - "security.isolation=strict"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Dedicated PostgreSQL instance for RAG vector storage (pgvector).
+  # Isolated from the orchestrator's postgres to prevent vector search workloads
+  # (HNSW indexing, cosine similarity) from competing with checkpoint/session persistence.
+  postgres_rag:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.postgres-rag
+    container_name: postgres_rag
+    profiles: ["apps"]
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    command: postgres -c max_connections=100 -c shared_buffers=256MB -c work_mem=64MB -c maintenance_work_mem=512MB
+    volumes:
+      - postgres_rag_data:/var/lib/postgresql/data
+    networks:
+      - data_net
+    labels:
+      - "tier=data"
+      - "security.role=database"
+      - "security.isolation=strict"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  postgres-setup:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.bootstrap
+    container_name: postgres-setup
+    profiles: ["bootstrap-task", "apps"]
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data_net
+    labels:
+      - "tier=data"
+      - "security.role=bootstrap"
+      - "security.ephemeral=true"
+    command: >
+      bash -c "
+        until python /app/scripts/deps/wait_for_postgres.py; do
+          >&2 echo 'Postgres setup script failed, retrying in 5s...'
+          sleep 5
+        done &&
+        python /app/scripts/deps/bootstrap_session_management.py
+      "
+  keycloak-setup:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.bootstrap
+    container_name: keycloak-setup
+    profiles: ["bootstrap-task", "apps"]  # Both profiles needed: bootstrap-task for Phase 2 startup, apps for Phase 3 depends_on visibility
+    user: root  # Run as root to fix permissions and chown after bootstrap
+    env_file: .env
+    environment:
+      # Bootstrap admin credentials
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      # Admin-CLI secret (optional: auto-discovered if not set)
+      - KC_ADMIN_CLI_SECRET=${KC_ADMIN_CLI_SECRET:-}
+      # Use env method for bootstrap since credential files don't exist yet
+      - SECRET_RETRIEVAL_METHOD=env
+      # PostgreSQL connection (credentials from .env, no hardcoded passwords)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=keycloak
+    volumes:
+      - ./.env-keycloak-credentials-dir:/app/credentials
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      postgres-setup:
+        condition: service_completed_successfully
+    networks:
+      - data_net
+    labels:
+      - "tier=data"
+      - "security.role=bootstrap"
+      - "security.ephemeral=true"
+    command: >
+      bash -c "
+        # Auto-discover admin-cli secret if not already set
+        if [ -z \"$$KC_ADMIN_CLI_SECRET\" ]; then
+          echo '🔐 KC_ADMIN_CLI_SECRET not set, discovering from Keycloak database...'
+
+          # Wait for Keycloak database schema to be ready
+          for i in {1..10}; do
+            if KC_ADMIN_CLI_SECRET=\$(/app/scripts/deps/discover_admin_cli_secret_internal.sh 2>&1) && [ -n \"$$KC_ADMIN_CLI_SECRET\" ]; then
+              echo '✅ Discovered existing admin-cli secret from database'
+              export KC_ADMIN_CLI_SECRET
+              break
+            fi
+
+            echo \"Waiting for Keycloak to initialize (attempt $$i/10)...\"
+            sleep 5
+          done
+
+          # On fresh Keycloak 26 installs, admin-cli is a public client (no secret).
+          # bootstrap_keycloak.py handles this: connects without secret, converts
+          # admin-cli to confidential, then saves the generated secret.
+          if [ -z \"$$KC_ADMIN_CLI_SECRET\" ]; then
+            echo '⚠️  admin-cli secret is NULL — fresh Keycloak install detected.'
+            echo '   Bootstrap will connect as public client and convert to confidential.'
+          fi
+        else
+          echo '✅ Using KC_ADMIN_CLI_SECRET from environment'
+        fi &&
+        find /app/credentials -type f -exec chown appuser:appgroup {} + 2>/dev/null || true &&
+        su -s /bin/bash appuser -c '/app/.venv/bin/python /app/scripts/deps/bootstrap_keycloak.py' &&
+        find /app/credentials -type f -exec chown 1000:1000 {} + 2>/dev/null || true
+      "
+
+volumes:
+  # Core persistent data volumes - bind to local data/ directory
+  # Using relative paths from deployment/local/docker-compose/ to project root
+  shared_uploads:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/uploaded_files
+
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/postgres_data
+
+  postgres_rag_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/postgres_rag_data
+
+  nginx_certs:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/nginx_certs
+
+  # Service-specific data volumes
+  n8n_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/n8n_data
+
+  openwebui_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/openwebui_data
+
+  sandbox_workspace:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/sandbox_workspace
+
+  mgmt_ui_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/mgmt_ui_data
+
+  # RAGFlow volumes (created here for external reference by RAGFlow compose files)
+  ragflow_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/ragflow_data
+
+  ragflow_sessions:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/ragflow_sessions
+
+  redis_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ../../../data/redis_data
+
+networks:
+  # ==============================================================================
+  # NETWORK ARCHITECTURE (Session 50, Session 51)
+  # ==============================================================================
+  #
+  # DOCKER COMPOSE ARCHITECTURE:
+  # - These networks are created by `scripts/init-shared-network.sh` in Phase 2
+  # - This happens BEFORE any services start (Phase 3+) to ensure availability
+  # - Other docker-compose files (langfuse, ragflow, core) declare networks as
+  #   `external: true` to use these pre-created networks
+  #
+  # STARTUP ORDER (via quick-start script):
+  # 1. Phase 1: Cleanup
+  # 2. Phase 2: Infrastructure - init-shared-network.sh creates all networks
+  # 3. Phase 3: Langfuse (uses adept_integration_network as external)
+  # 4. Phase 4: ADEPT stack (uses all networks as external)
+  #
+  # KUBERNETES COMPATIBILITY:
+  # - This file is Docker Compose specific and not used in K8s deployments
+  # - In K8s, network segmentation is achieved via:
+  #   * NetworkPolicies for tier isolation
+  #   * Service mesh for service-to-service communication
+  #   * Namespace separation for multi-tenancy
+  # - See infra/helm/ or docs/kubernetes/ for K8s network configuration
+  #
+  # ==============================================================================
+
+  # Three-tier network segmentation (Session 50 Phase 1, Session 51 Phase 12)
+
+  # Frontend network: User-facing services (nginx_proxy, OAuth2 proxy, UIs)
+  # IMPORTANT: Network is pre-created by scripts/init-shared-network.sh in Phase 2
+  frontend_net:
+    name: adept_frontend_network
+    external: true
+
+  # Application network: Business logic services (agent_gateway, orchestration_service, MCP servers)
+  # IMPORTANT: Network is pre-created by scripts/init-shared-network.sh in Phase 2
+  application_net:
+    name: adept_application_network
+    external: true
+
+  # Data network: Infrastructure services (PostgreSQL, Redis, Keycloak)
+  # IMPORTANT: Network is pre-created by scripts/init-shared-network.sh in Phase 2
+  data_net:
+    name: adept_data_network
+    external: true
+
+  # Sandbox isolation network: ONLY orchestration_service and sandbox_mcp_server
+  # Prevents sandbox lateral movement to keycloak, agent_gateway, other MCP servers
+  # IMPORTANT: Network is pre-created by scripts/init-shared-network.sh in Phase 2
+  sandbox_net:
+    name: adept_sandbox_network
+    external: true
+
+  # 3rd-party integration network: Langfuse, RAGFlow, external services
+  # IMPORTANT: Network is pre-created by scripts/init-shared-network.sh in Phase 2
+  # NOTE: This network is referenced by langfuse and ragflow compose files
+  adept_integration_network:
+    name: adept_integration_network
+    external: true

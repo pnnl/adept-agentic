@@ -1,0 +1,279 @@
+# SkyPilot Task: Deploy ADEPT to AWS EC2
+#
+# Provisions a development VM and starts the full ADEPT stack.
+# Mirrors resource specs from devtools/aws-cdk/stacks/dev_environment_stack.py.
+#
+# Usage:
+#   # Deploy with defaults (t3.2xlarge, us-west-2)
+#   sky launch -c adept-dev devtools/skypilot/tasks/deploy-adept-cloud.yaml
+#
+#   # Deploy with custom branch
+#   sky launch -c adept-dev devtools/skypilot/tasks/deploy-adept-cloud.yaml \
+#     --env ADEPT_BRANCH=feature-platform-optimizations-FY26Q2
+#
+#   # Deploy with GPU for sandbox workloads
+#   sky launch -c adept-gpu devtools/skypilot/tasks/deploy-adept-cloud.yaml \
+#     --env INSTANCE_CLASS=gpu
+#
+#   # Check status
+#   sky status
+#
+#   # Stop (preserves data, stops billing)
+#   sky stop adept-dev
+#
+#   # Restart
+#   sky start adept-dev
+#
+#   # Teardown (destroys VM and data)
+#   sky down adept-dev
+
+name: adept-cloud-dev
+
+resources:
+  cloud: aws
+  region: us-west-2
+  # Mirrors devtools/aws-cdk/stacks/dev_environment_stack.py:52
+  # Default: t3.2xlarge (8 vCPU, 32 GB RAM)
+  cpus: 8+
+  memory: 32+
+  disk_size: 500                    # 500 GB gp3 (mirrors CDK data volume)
+  disk_tier: medium                 # gp3 equivalent
+  ports:
+    - 443                           # nginx HTTPS (reverse proxy)
+    - 80                            # nginx HTTP (redirect to HTTPS)
+    - 8083                          # Agent Gateway (host port, dev access)
+    - 8180                          # Keycloak (dev access)
+    - 8084                          # Orchestration Service (dev access)
+  use_spot: false                   # ADEPT is stateful — never use spot
+  image_id: ami-0ba80f8099420ac44   # Ubuntu Jammy 22.04 (us-west-2, 2026-02-18)
+
+envs:
+  ADEPT_BRANCH: main
+  ADEPT_REPO: https://github.com/pnnl/adept-agentic.git
+  # LLM credentials — set via --env flags
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  AWS_REGION_NAME: us-west-2
+  # Optional: Azure OpenAI fallback
+  AZURE_API_KEY: ""
+  AZURE_API_BASE: ""
+
+setup: |
+  set -euo pipefail
+  echo "============================================"
+  echo "ADEPT Cloud VM Setup — Phase 1: System Dependencies"
+  echo "============================================"
+
+  # --- Idempotent helper: only set .env key if currently empty/unset ---
+  _set_env_if_empty() {
+    local key="$1" value="$2" file="$3"
+    local current
+    current=$(grep "^${key}=" "$file" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [ -z "$current" ] || [ "$current" = '""' ] || [ "$current" = "''" ]; then
+      sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+      echo "  Set ${key}"
+    else
+      echo "  Keep existing ${key}=${current}"
+    fi
+  }
+
+  # Phase 1: Docker (skip if already installed)
+  if ! command -v docker &> /dev/null; then
+    echo "Installing Docker CE..."
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    sudo chmod 666 /var/run/docker.sock
+  fi
+
+  # Ensure Docker is running
+  if ! systemctl is-active --quiet docker; then
+    sudo systemctl enable --now docker
+  fi
+
+  # Docker socket access for current session
+  if [ ! -w /var/run/docker.sock ]; then
+    sudo chmod 666 /var/run/docker.sock
+  fi
+
+  # Docker Compose plugin
+  if ! docker compose version &> /dev/null; then
+    echo "Installing Docker Compose plugin..."
+    sudo apt-get update -qq && sudo apt-get install -y -qq docker-compose-plugin
+  fi
+
+  # Docker smoke test
+  echo "Running Docker smoke test..."
+  docker run --rm hello-world | grep -q "Hello from Docker!" || {
+    echo "ERROR: Docker smoke test failed"
+    exit 1
+  }
+  echo "Docker smoke test passed."
+
+  # Docker socket permissions for sandbox_mcp_server DinD (nsjail).
+  # Single-tenant dev VM, IAM-gated, private subnet — not internet-exposed.
+  # For multi-tenant/production, restrict to docker group (0660).
+  sudo mkdir -p /var/lib/docker/containerd
+  sudo chmod 2777 /var/lib/docker/containerd
+  [ -d /var/run/docker ] && sudo chmod 2777 /var/run/docker
+  sudo chmod 777 /var/run/docker.sock
+
+  # Docker data root optimization (if /data is a separate mount)
+  if mountpoint -q /data 2>/dev/null && command -v docker &>/dev/null; then
+    CURRENT_ROOT=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo "unknown")
+    if [ "$CURRENT_ROOT" != "/data/docker" ]; then
+      echo "Migrating Docker data root to /data/docker..."
+      sudo systemctl stop docker docker.socket containerd || true
+      sudo mkdir -p /data/docker /data/containerd
+      if [ -d /var/lib/docker ] && [ ! -L /var/lib/docker ]; then
+        sudo rsync -aHAX /var/lib/docker/ /data/docker/ && sudo rm -rf /var/lib/docker
+      fi
+      sudo ln -sfn /data/docker /var/lib/docker
+      sudo ln -sfn /data/containerd /var/lib/containerd
+      if ! grep -q '/data/docker' /etc/docker/daemon.json 2>/dev/null; then
+        sudo tee /etc/docker/daemon.json > /dev/null <<DAEMON_EOF
+  {
+    "data-root": "/data/docker",
+    "storage-driver": "overlay2",
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "50m", "max-file": "5" }
+  }
+  DAEMON_EOF
+      fi
+      sudo systemctl start docker
+    fi
+  fi
+
+  # Allow unprivileged port binding (nginx on 80/443 without root)
+  echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee /etc/sysctl.d/99-unprivileged-ports.conf
+  sudo sysctl --system > /dev/null
+
+  # Validate disk space
+  AVAILABLE_GB=$(df --output=avail -BG / | tail -1 | tr -d ' G')
+  echo "Available root disk space: ${AVAILABLE_GB}GB"
+  if [ "$AVAILABLE_GB" -lt 100 ]; then
+    echo "ERROR: Insufficient disk space. Need 100GB+ free, have ${AVAILABLE_GB}GB"
+    exit 1
+  fi
+
+  echo "============================================"
+  echo "ADEPT Cloud VM Setup — Phase 2: Clone & Configure"
+  echo "============================================"
+
+  # Phase 2: Clone ADEPT
+  WORKSPACE=/data/workspace
+  sudo mkdir -p $WORKSPACE
+  sudo chown $USER:$USER $WORKSPACE
+
+  if [ -d "$WORKSPACE/adept" ]; then
+    echo "Updating existing ADEPT clone..."
+    cd $WORKSPACE/adept && git fetch origin && git checkout ${ADEPT_BRANCH} && git pull
+  else
+    echo "Cloning ADEPT (branch: ${ADEPT_BRANCH})..."
+    git clone -b ${ADEPT_BRANCH} ${ADEPT_REPO} $WORKSPACE/adept
+  fi
+
+  cd $WORKSPACE/adept
+
+  # Phase 3: Configure environment (idempotent)
+  if [ ! -f .env ]; then
+    cp .env.example .env
+  fi
+
+  # Detect public IP
+  PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || \
+              curl -s http://checkip.amazonaws.com 2>/dev/null || \
+              hostname -I | awk '{print $1}')
+  if [ -z "$PUBLIC_IP" ]; then
+    echo "ERROR: Could not detect public IP"
+    exit 1
+  fi
+  echo "Detected public IP: ${PUBLIC_IP}"
+
+  # Infrastructure values — always set to detected IP
+  sed -i "s|^NGINX_PUBLIC_FQDN=.*|NGINX_PUBLIC_FQDN=${PUBLIC_IP}|" .env
+  sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://${PUBLIC_IP}|" .env
+  sed -i "s|^AGENT_GATEWAY_ALLOWED_HOSTS=.*|AGENT_GATEWAY_ALLOWED_HOSTS=${PUBLIC_IP},localhost,127.0.0.1,*.agentic.local,api.agentic.local|" .env
+
+  # LLM credentials — only set if currently empty (preserve user customizations)
+  if [ -n "${AWS_ACCESS_KEY_ID}" ]; then
+    _set_env_if_empty "AWS_ACCESS_KEY_ID" "${AWS_ACCESS_KEY_ID}" .env
+    _set_env_if_empty "AWS_SECRET_ACCESS_KEY" "${AWS_SECRET_ACCESS_KEY}" .env
+    _set_env_if_empty "AWS_REGION_NAME" "${AWS_REGION_NAME}" .env
+  fi
+
+  if [ -n "${AZURE_API_KEY}" ]; then
+    _set_env_if_empty "AZURE_API_KEY" "${AZURE_API_KEY}" .env
+    _set_env_if_empty "AZURE_API_BASE" "${AZURE_API_BASE}" .env
+  fi
+
+  # Add Docker service names to /etc/hosts (idempotent — grep guard)
+  grep -q 'api.agentic.local' /etc/hosts || \
+    echo "127.0.0.1 api.agentic.local" | sudo tee -a /etc/hosts
+  grep -q 'keycloak.*agent_gateway' /etc/hosts || \
+    echo "127.0.0.1 keycloak agent_gateway gateway_registry redis orchestration_service" | sudo tee -a /etc/hosts
+
+  # Initialize symlinks and permissions
+  make create-env-symlink
+  make init-shared-volume-permissions
+
+  # Generate/regenerate TLS cert if SANs don't include current IP
+  CERT_DIR="$WORKSPACE/adept/data/nginx_certs"
+  if [ ! -f "${CERT_DIR}/api.agentic.local.crt" ] || \
+     ! openssl x509 -in "${CERT_DIR}/api.agentic.local.crt" -noout -text 2>/dev/null | grep -q "IP Address:${PUBLIC_IP}"; then
+    echo "Generating self-signed TLS certificate (SAN includes ${PUBLIC_IP})..."
+    mkdir -p "${CERT_DIR}"
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout "${CERT_DIR}/api.agentic.local.key" \
+      -out "${CERT_DIR}/api.agentic.local.crt" \
+      -subj "/CN=api.agentic.local" \
+      -addext "subjectAltName=DNS:api.agentic.local,DNS:*.agentic.local,DNS:localhost,IP:127.0.0.1,IP:${PUBLIC_IP}"
+  fi
+
+  echo "Setup complete."
+
+run: |
+  set -euo pipefail
+  cd /data/workspace/adept
+
+  echo "============================================"
+  echo "ADEPT Cloud VM — Starting Services"
+  echo "============================================"
+
+  # Start all services
+  make start
+
+  # Wait for services to initialize
+  echo "Waiting for services to initialize (90s)..."
+  sleep 90
+
+  # Validate health
+  echo "Running health checks..."
+  make validate-service-health || true
+
+  # Display access information
+  PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || hostname -I | awk '{print $1}')
+
+  echo ""
+  echo "============================================"
+  echo "  ADEPT Deployment Complete"
+  echo "============================================"
+  echo ""
+  echo "  Agent Gateway:  https://${PUBLIC_IP}/v1"
+  echo "  Keycloak:       https://${PUBLIC_IP}/auth"
+  echo "  OpenWebUI:      https://${PUBLIC_IP}/openwebui/"
+  echo "  JupyterLab:     https://${PUBLIC_IP}/jupyter/"
+  echo "  Streamlit:      https://${PUBLIC_IP}/streamlit/"
+  echo ""
+  echo "  SSH:            ssh $(whoami)@${PUBLIC_IP}"
+  echo "  Workspace:      /data/workspace/adept"
+  echo ""
+  echo "  Default admin credentials: admin / admin"
+  echo "  (Change after first login via Keycloak)"
+  echo ""
+  echo "============================================"
+  echo ""
+  echo "  Lifecycle commands:"
+  echo "    sky stop adept-dev       # Stop billing (preserves data)"
+  echo "    sky start adept-dev      # Resume"
+  echo "    sky down adept-dev       # Destroy VM and data"
+  echo ""

@@ -1,0 +1,3 @@
+# infra/dockerfiles/azure/Dockerfile.n8n
+# Internalizes the public n8n image for consistent lifecycle management.
+FROM n8nio/n8n:latest

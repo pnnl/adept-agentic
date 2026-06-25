@@ -1,0 +1,20 @@
+{
+  "name": "get_system_information_docker",
+  "description": "A DOCKERIZED tool that retrieves basic system information from its own container, such as OS type and architecture.",
+  "args_schema": {},
+  "invocation": {
+    "protocol": "stdio",
+    "connection": {
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "-i",
+        "sys-info-tool:latest"
+      ]
+    }
+  },
+  "acl": {
+    "global": true
+  }
+}

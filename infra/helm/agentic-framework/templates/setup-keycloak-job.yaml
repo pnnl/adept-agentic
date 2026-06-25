@@ -1,0 +1,66 @@
+{{- if .Values.keycloak.setupJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-keycloak-setup-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: setup-job
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "agentic-framework.fullname" . }}-setup-sa
+      initContainers:
+      - name: wait-for-postgres
+        image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+        command: ['sh', '-c', 
+                  'until pg_isready -h {{ include "agentic-framework.fullname" . }}-postgres -p {{ .Values.postgres.service.port }}; do echo waiting for postgres; sleep 2; done;']
+      containers:
+        - name: keycloak-client-setup
+          image: "{{ .Values.global.image.repositoryPrefix }}agentic-framework-bootstrap:{{ .Values.global.image.tag }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command:
+            - "/bin/sh"
+            - "-c"
+            - |
+              set -e
+              echo "Starting Keycloak bootstrap and secret generation job..."
+              
+              # Wait for Keycloak to be ready
+              until curl -s -f "http://{{ include "agentic-framework.fullname" . }}-keycloak:{{ .Values.keycloak.service.port }}/realms/master"; do
+                echo "Keycloak is not available yet. Retrying in 10 seconds..."
+                sleep 10
+              done
+              
+              echo "Keycloak is ready. Running bootstrap script..."
+              python /app/scripts/deps/bootstrap_keycloak.py
+              
+              echo "Keycloak bootstrap job complete."
+          env:
+            - name: KEYCLOAK_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-keycloak:{{ .Values.keycloak.service.port }}"
+            - name: KEYCLOAK_REALM
+              value: "{{ .Values.keycloak.realm | default "master" }}"
+            - name: KEYCLOAK_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: keycloak-admin-user
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: keycloak-admin-password
+            # For saving secrets in K8s
+            - name: K8S_SECRET_NAME
+              value: {{ .Values.secrets.existingSecretName | quote }}
+            - name: K8S_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+  backoffLimit: 3
+{{- end }}

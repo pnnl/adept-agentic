@@ -1,0 +1,696 @@
+---
+# ASOPB Control Definitions
+# Agentic Security & Operations Performance Benchmark
+# Built-in STIG-style control catalog (user-extensible)
+
+asopb_version: "1.0.0"
+
+domains:
+  D1:
+    name: "Foundation Model Integrity"
+    description: "Verification that the underlying foundation model has not been compromised, is properly maintained, and conforms to stated specifications"
+    weight: 1.5
+    controls:
+      - id: "D1.1"
+        name: "Model provenance verification"
+        description: |
+          Verify the provenance and authenticity of the foundation model.
+          This control requires evidence that the model came from a trusted source,
+          has not been tampered with, and is the correct version claimed.
+        severity: "critical"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Model download from official source with signature verification"
+          - "Documented chain of custody from vendor"
+          - "Hash verification against published checksums"
+        t2_criteria:
+          - "Automated signature verification in deployment pipeline"
+          - "Model registration in centralized artifact repository"
+          - "Integrity monitoring in runtime environment"
+        t3_criteria:
+          - "Red team attempt to inject compromised model variant"
+          - "Adversarial validation of model consistency"
+          - "Tampering detection via behavioral fingerprinting"
+        positive_patterns: ["verify.*signature", "checksum.*validation", "model.*provenance"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SI-7"]
+        owasp_mapping: ["LLM05"]
+        cwe_mapping: ["CWE-494"]
+        tags: ["model-security", "supply-chain"]
+
+      - id: "D1.2"
+        name: "Model version management"
+        description: |
+          Maintain accurate records of model versions in use, enable rollback
+          to previous versions, and prevent unauthorized version changes.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Documented version control policy"
+          - "Version numbers tracked in deployment metadata"
+          - "Release notes or change logs maintained"
+        t2_criteria:
+          - "Automated version pinning in container images"
+          - "Git/artifact registry versioning enforced"
+          - "Version mismatch detection alerts"
+        t3_criteria:
+          - "Rollback testing and validation"
+          - "Version downgrade resistance testing"
+          - "Behavioral consistency across versions"
+        positive_patterns: ["version.*management", "model.*tag", "release.*note"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["CM-3"]
+        owasp_mapping: ["LLM05"]
+        cwe_mapping: []
+        tags: ["configuration-management"]
+
+      - id: "D1.3"
+        name: "Model capability inventory"
+        description: |
+          Maintain a complete and accurate inventory of model capabilities,
+          known limitations, and intended use cases.
+        severity: "medium"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Model card or capability specification document"
+          - "Documented intended use cases"
+          - "Known limitations listed"
+        t2_criteria:
+          - "Automated capability detection/testing"
+          - "Capability matrix in monitoring system"
+          - "Usage tracking aligned to documented capabilities"
+        t3_criteria:
+          - "Behavioral testing for unexpected capabilities"
+          - "Jailbreak attempt detection"
+          - "Capability drift monitoring"
+        positive_patterns: ["model.*card", "capability.*inventory", "limitations"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["CM-2"]
+        owasp_mapping: ["LLM02"]
+        cwe_mapping: []
+        tags: ["model-documentation"]
+
+  D2:
+    name: "Inference Integrity"
+    description: "Validation that model inference produces expected outputs and that no tampering occurs during the inference process"
+    weight: 1.5
+    controls:
+      - id: "D2.1"
+        name: "Input validation and sanitization"
+        description: |
+          Validate and sanitize all inputs to the model to prevent injection
+          attacks, format attacks, and other input-based exploits.
+        severity: "critical"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Input validation policy documented"
+          - "Type checking and length limits specified"
+          - "Schema definition for expected inputs"
+        t2_criteria:
+          - "Runtime input validation enforced"
+          - "Automated sanitization of special characters"
+          - "Rate limiting per user/API key"
+        t3_criteria:
+          - "Prompt injection attack testing"
+          - "Adversarial input fuzzing"
+          - "Malicious payload detection"
+        positive_patterns: ["input.*validation", "sanitize", "injection.*prevention"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SI-10"]
+        owasp_mapping: ["LLM01"]
+        cwe_mapping: ["CWE-94", "CWE-400"]
+        tags: ["input-security", "attack-prevention"]
+
+      - id: "D2.2"
+        name: "Output validation and filtering"
+        description: |
+          Validate and filter model outputs before returning to users,
+          preventing harmful or inappropriate content.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Output filtering policy documented"
+          - "Harmful content categories defined"
+          - "Filtering rules specified"
+        t2_criteria:
+          - "Content filter applied to all outputs"
+          - "Automated detection of PII/sensitive data in responses"
+          - "Configurable filtering levels"
+        t3_criteria:
+          - "Evasion testing (rephrasing attacks)"
+          - "Multilingual harmful content detection"
+          - "Output jailbreak attempt detection"
+        positive_patterns: ["output.*filter", "content.*detection", "response.*validation"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SI-10"]
+        owasp_mapping: ["LLM02"]
+        cwe_mapping: []
+        tags: ["output-security"]
+
+      - id: "D2.3"
+        name: "Inference determinism and reproducibility"
+        description: |
+          Ensure that identical inputs with the same model state produce
+          consistent outputs (when determinism is expected).
+        severity: "medium"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Determinism requirements documented"
+          - "Temperature/seed parameters specified"
+          - "Expected output consistency defined"
+        t2_criteria:
+          - "Seed management and logging"
+          - "Output consistency monitoring"
+          - "Inference test harness"
+        t3_criteria:
+          - "Behavioral consistency validation across deployments"
+          - "Model drift detection"
+          - "Output stability under load"
+        positive_patterns: ["seed", "deterministic", "reproducib"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: []
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["reliability", "testing"]
+
+  D3:
+    name: "Agent Instruction Integrity"
+    description: "Controls ensuring agent instructions cannot be overridden or manipulated, and instructions are properly versioned"
+    weight: 1.2
+    controls:
+      - id: "D3.1"
+        name: "Instruction immutability"
+        description: |
+          Agent instructions and system prompts cannot be modified after
+          deployment without explicit authentication and approval.
+        severity: "critical"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Instructions stored in immutable configuration"
+          - "Version control for instructions"
+          - "Change approval process documented"
+        t2_criteria:
+          - "Hardware or cryptographic write protection"
+          - "Integrity monitoring with alerts"
+          - "Audit logging of all instruction changes"
+        t3_criteria:
+          - "Prompt injection resistance testing"
+          - "Runtime instruction override attempts"
+          - "Behavioral consistency under attack"
+        positive_patterns: ["immutable.*instruction", "prompt.*injection.*test", "system.*prompt.*validation"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["CM-5"]
+        owasp_mapping: ["LLM01"]
+        cwe_mapping: ["CWE-94"]
+        tags: ["instruction-security", "immutability"]
+
+      - id: "D3.2"
+        name: "Instruction version control"
+        description: |
+          Maintain version control for all agent instructions with the ability
+          to audit who modified them and when.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Version control system configured"
+          - "Commit history preserved"
+          - "Instructions stored in git/SCM"
+        t2_criteria:
+          - "Automated deployment from version control"
+          - "Code review/approval before merge"
+          - "Immutable release tags"
+        t3_criteria:
+          - "Unauthorized modification detection"
+          - "Version rollback attack resistance"
+          - "Behavioral consistency across versions"
+        positive_patterns: ["git.*instruction", "version.*control.*prompt", "code.*review"]
+        negative_patterns: []
+        required_files: [".git/", ".gitignore"]
+        nist_mapping: ["CM-3", "AU-12"]
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["configuration-management", "audit"]
+
+      - id: "D3.3"
+        name: "User instruction rejection"
+        description: |
+          Prevent user inputs from overriding system instructions or
+          causing unintended behavioral changes.
+        severity: "critical"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Instruction override prevention documented"
+          - "Prompt injection rules defined"
+          - "Test cases for override attempts specified"
+        t2_criteria:
+          - "Input filtering to block override attempts"
+          - "Separate system/user instruction channels"
+          - "Testing of override resistance"
+        t3_criteria:
+          - "Comprehensive jailbreak testing"
+          - "Adversarial prompt injection attacks"
+          - "Multi-language override attempts"
+        positive_patterns: ["instruction.*override.*prevention", "prompt.*injection.*filter", "jailbreak.*test"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["AC-3"]
+        owasp_mapping: ["LLM01"]
+        cwe_mapping: ["CWE-94"]
+        tags: ["instruction-security", "attack-prevention"]
+
+  D4:
+    name: "Agent Identity and Authentication"
+    description: "Controls ensuring agent identity can be cryptographically verified and authentication is properly enforced"
+    weight: 1.3
+    controls:
+      - id: "D4.1"
+        name: "Agent identity attestation"
+        description: |
+          Agent identity is verifiable through cryptographic means,
+          preventing identity spoofing.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Identity scheme design documented"
+          - "Certificate or public key infrastructure planned"
+          - "Identity binding strategy specified"
+        t2_criteria:
+          - "Deployed identity certificates/tokens"
+          - "Cryptographic signature of agent responses"
+          - "Public key distribution mechanism"
+        t3_criteria:
+          - "Identity spoofing attack testing"
+          - "Certificate forgery resistance"
+          - "Signature verification under attack"
+        positive_patterns: ["identity.*attestation", "certificate", "cryptographic.*signature", "public.*key"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["AC-2", "IA-4"]
+        owasp_mapping: ["LLM04"]
+        cwe_mapping: ["CWE-295"]
+        tags: ["authentication", "cryptography"]
+
+      - id: "D4.2"
+        name: "User authentication"
+        description: |
+          Users are authenticated before interacting with the agent,
+          and authentication mechanisms are properly implemented.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Authentication mechanism designed"
+          - "Credential types documented"
+          - "Session management policy specified"
+        t2_criteria:
+          - "Multi-factor authentication (MFA) enforced"
+          - "Session timeouts and revocation"
+          - "Password/token strength requirements"
+        t3_criteria:
+          - "Authentication bypass attack testing"
+          - "Session hijacking resistance"
+          - "Credential theft recovery testing"
+        positive_patterns: ["mfa", "multi.*factor", "authentication", "password.*policy"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["AC-2", "IA-2"]
+        owasp_mapping: ["LLM04"]
+        cwe_mapping: ["CWE-287"]
+        tags: ["authentication", "access-control"]
+
+      - id: "D4.3"
+        name: "Authorization and access control"
+        description: |
+          Users can only perform authorized actions based on roles
+          and permissions, with no privilege escalation.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Role-based access control (RBAC) or equivalent designed"
+          - "Permission model documented"
+          - "Privilege escalation prevention specified"
+        t2_criteria:
+          - "RBAC implementation with audit logging"
+          - "Least-privilege enforcement"
+          - "Periodic access review process"
+        t3_criteria:
+          - "Privilege escalation attack testing"
+          - "Unauthorized capability access attempts"
+          - "Role confusion attack testing"
+        positive_patterns: ["rbac", "authorization", "permission", "access.*control"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["AC-3", "AC-5"]
+        owasp_mapping: ["LLM04"]
+        cwe_mapping: ["CWE-269"]
+        tags: ["access-control", "authorization"]
+
+  D5:
+    name: "Information Disclosure Control"
+    description: "Prevents unintended disclosure of sensitive information through agent behavior or logs"
+    weight: 1.2
+    controls:
+      - id: "D5.1"
+        name: "PII detection and filtering"
+        description: |
+          Personally identifiable information (PII) is detected and filtered
+          before being returned to users or logged.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "PII categories defined (SSN, email, phone, etc.)"
+          - "Detection rules specified"
+          - "Filtering policy documented"
+        t2_criteria:
+          - "PII detection model/rules deployed"
+          - "Automated response on detection (redaction/blocking)"
+          - "PII detection monitoring and alerts"
+        t3_criteria:
+          - "Evasion testing (obfuscated PII detection)"
+          - "Foreign language PII detection"
+          - "Context-aware PII identification"
+        positive_patterns: ["pii.*detect", "pii.*filter", "redact", "sensitive.*data"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["DL-3"]
+        owasp_mapping: ["LLM06"]
+        cwe_mapping: ["CWE-359"]
+        tags: ["data-protection", "privacy"]
+
+      - id: "D5.2"
+        name: "Secure logging"
+        description: |
+          Logs do not contain sensitive information and are protected
+          from tampering and unauthorized access.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Logging policy documented"
+          - "Sensitive fields exclusion specified"
+          - "Log retention policy defined"
+        t2_criteria:
+          - "Structured logging with PII filtering"
+          - "Encrypted log storage"
+          - "Access control on log files"
+        t3_criteria:
+          - "Log tampering detection"
+          - "Unauthorized access attempts to logs"
+          - "Log integrity verification"
+        positive_patterns: ["secure.*log", "log.*encryption", "audit.*log", "tamper.*proof"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["AU-2", "AU-12"]
+        owasp_mapping: ["LLM06"]
+        cwe_mapping: ["CWE-532"]
+        tags: ["logging", "data-protection"]
+
+      - id: "D5.3"
+        name: "Model fingerprinting resistance"
+        description: |
+          Prevents attackers from extracting or inferring sensitive
+          information about the model itself.
+        severity: "medium"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Fingerprinting attack vectors identified"
+          - "Countermeasures designed"
+          - "Error message policy specified"
+        t2_criteria:
+          - "Error messages do not leak model info"
+          - "Timing attacks mitigated"
+          - "Output structure randomization"
+        t3_criteria:
+          - "Model extraction attack testing"
+          - "Membership inference attack resistance"
+          - "Property inference attack resistance"
+        positive_patterns: ["fingerprint.*resist", "error.*message.*policy", "timing.*attack"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: []
+        owasp_mapping: ["LLM03"]
+        cwe_mapping: []
+        tags: ["model-security", "privacy"]
+
+  D6:
+    name: "External Tool Integration Safety"
+    description: "Controls for the secure integration and use of external tools by the agent"
+    weight: 1.0
+    controls:
+      - id: "D6.1"
+        name: "Tool inventory and capability validation"
+        description: |
+          All tools available to the agent are inventoried and their
+          capabilities are validated before use.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Tool catalog created with capabilities listed"
+          - "Tool approval process documented"
+          - "Tool risk assessment performed"
+        t2_criteria:
+          - "Tool registry with version tracking"
+          - "Automated tool validation before execution"
+          - "Tool usage logging"
+        t3_criteria:
+          - "Unauthorized tool injection attempts"
+          - "Tool privilege escalation testing"
+          - "Tool capability abuse scenarios"
+        positive_patterns: ["tool.*inventory", "tool.*registry", "capability.*validation"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SA-3"]
+        owasp_mapping: ["LLM07"]
+        cwe_mapping: []
+        tags: ["tool-security", "integration"]
+
+      - id: "D6.2"
+        name: "Tool access control and sandboxing"
+        description: |
+          Tool access is restricted based on agent context and tools
+          are executed in isolated environments when possible.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Tool access control model designed"
+          - "Execution environment (sandbox) specified"
+          - "Resource limits defined"
+        t2_criteria:
+          - "Tools executed in containers/sandboxes"
+          - "Access control enforced per tool"
+          - "Resource quotas enforced"
+        t3_criteria:
+          - "Sandbox escape attempts"
+          - "Unauthorized tool invocation"
+          - "Resource exhaustion attacks"
+        positive_patterns: ["sandbox", "container", "access.*control.*tool", "resource.*limit"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SI-3"]
+        owasp_mapping: ["LLM07"]
+        cwe_mapping: ["CWE-94"]
+        tags: ["tool-security", "sandboxing"]
+
+      - id: "D6.3"
+        name: "Tool result validation"
+        description: |
+          Results returned from tools are validated for correctness
+          and safety before being used by the agent.
+        severity: "medium"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Tool result schema defined"
+          - "Validation rules specified"
+          - "Error handling policy documented"
+        t2_criteria:
+          - "Runtime result validation implemented"
+          - "Automated error detection and handling"
+          - "Result anomaly detection"
+        t3_criteria:
+          - "Malicious tool result injection"
+          - "Result tampering detection"
+          - "Agent behavior under invalid results"
+        positive_patterns: ["result.*validation", "schema.*validation", "tool.*output.*check"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SI-10"]
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["tool-security", "validation"]
+
+  D7:
+    name: "Compliance and Ethical Constraints"
+    description: "Controls ensuring the agent operates within ethical bounds and complies with regulations"
+    weight: 1.0
+    controls:
+      - id: "D7.1"
+        name: "Harmful content prevention"
+        description: |
+          The agent is prevented from generating content that could cause
+          harm (violence, abuse, illegal activities, etc.).
+        severity: "critical"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Harmful content categories defined"
+          - "Detection rules specified"
+          - "Response policy documented"
+        t2_criteria:
+          - "Content filtering deployed"
+          - "Automated harmful content detection"
+          - "User reporting mechanism"
+        t3_criteria:
+          - "Jailbreak attack testing"
+          - "Evasion attempt testing"
+          - "Harmful content generation under adversarial input"
+        positive_patterns: ["harmful.*content.*prevention", "jailbreak.*resist", "abuse.*detect"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: []
+        owasp_mapping: ["LLM02"]
+        cwe_mapping: []
+        tags: ["safety", "content-filtering"]
+
+      - id: "D7.2"
+        name: "Bias and fairness monitoring"
+        description: |
+          The agent's outputs are monitored for unfair bias and
+          fairness issues are logged and addressed.
+        severity: "medium"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Bias definition and metrics specified"
+          - "Fairness audit plan documented"
+          - "Remediation process defined"
+        t2_criteria:
+          - "Fairness monitoring in production"
+          - "Demographic parity or other metrics tracked"
+          - "Bias alert system"
+        t3_criteria:
+          - "Adversarial fairness testing"
+          - "Protected attribute inference"
+          - "Group fairness under distribution shift"
+        positive_patterns: ["bias.*monitor", "fairness.*audit", "demographic.*parity"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: []
+        owasp_mapping: ["LLM05"]
+        cwe_mapping: []
+        tags: ["fairness", "ethics", "monitoring"]
+
+      - id: "D7.3"
+        name: "Regulatory compliance (GDPR, data residency)"
+        description: |
+          The agent respects data protection regulations and data residency
+          requirements in its operations.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Applicable regulations identified"
+          - "Data processing agreements executed"
+          - "Compliance requirements documented"
+        t2_criteria:
+          - "Data residency enforced in infrastructure"
+          - "Right to deletion implementation"
+          - "Data export capability"
+        t3_criteria:
+          - "Compliance audit findings remediation"
+          - "Data export correctness"
+          - "Deletion verification"
+        positive_patterns: ["gdpr", "data.*residency", "compliance", "right.*to.*be.*forgotten"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["DL-1"]
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["compliance", "privacy", "regulations"]
+
+  D8:
+    name: "Operational Monitoring and Incident Response"
+    description: "Controls for detecting anomalies, generating alerts, and responding to security incidents"
+    weight: 1.1
+    controls:
+      - id: "D8.1"
+        name: "Anomaly detection and alerting"
+        description: |
+          System behaviors are monitored for anomalies with automated
+          detection and alerting of suspicious activities.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Anomaly types defined"
+          - "Detection thresholds specified"
+          - "Alert policy documented"
+        t2_criteria:
+          - "Anomaly detection deployed"
+          - "Real-time alerting mechanism"
+          - "Alert response procedure"
+        t3_criteria:
+          - "Detection evasion testing"
+          - "Alert tuning and false positive testing"
+          - "Incident response game day exercise"
+        positive_patterns: ["anomaly.*detect", "alert.*system", "suspicious.*activity.*detect"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["SI-4"]
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["monitoring", "incident-response"]
+
+      - id: "D8.2"
+        name: "Security event logging"
+        description: |
+          Security-relevant events are logged with sufficient detail
+          for forensic investigation and audit.
+        severity: "high"
+        applicable_stages: ["S1", "S2", "S3", "S4"]
+        t1_criteria:
+          - "Security event categories defined"
+          - "Logging schema specified"
+          - "Retention policy documented"
+        t2_criteria:
+          - "Centralized logging system deployed"
+          - "Event correlation and parsing"
+          - "Immutable log storage"
+        t3_criteria:
+          - "Log tampering detection testing"
+          - "Log completeness verification"
+          - "Forensic reconstruction capability"
+        positive_patterns: ["security.*event.*log", "centralized.*log", "audit.*log"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["AU-2", "AU-12"]
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["logging", "audit", "incident-response"]
+
+      - id: "D8.3"
+        name: "Incident response plan"
+        description: |
+          A documented incident response plan exists with roles,
+          procedures, and regular testing/drills.
+        severity: "high"
+        applicable_stages: ["S2", "S3", "S4"]
+        t1_criteria:
+          - "Incident response plan documented"
+          - "Roles and responsibilities assigned"
+          - "Escalation procedures defined"
+        t2_criteria:
+          - "Incident detection and classification process"
+          - "Communication procedures"
+          - "Evidence preservation procedures"
+        t3_criteria:
+          - "Incident response exercises/drills"
+          - "Post-incident review process"
+          - "Improvements from past incidents"
+        positive_patterns: ["incident.*response.*plan", "irp", "playbook"]
+        negative_patterns: []
+        required_files: []
+        nist_mapping: ["IR-1"]
+        owasp_mapping: []
+        cwe_mapping: []
+        tags: ["incident-response", "planning"]

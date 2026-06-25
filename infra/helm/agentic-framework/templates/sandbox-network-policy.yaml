@@ -1,0 +1,61 @@
+{{- if and .Values.sandbox_mcp_server.enabled .Values.sandbox_mcp_server.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-sandbox-isolation
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox-mcp-server
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sandbox-mcp-server
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "agentic-framework.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: orchestration-service
+      ports:
+        - protocol: TCP
+          port: {{ .Values.sandbox_mcp_server.service.port }}
+  egress:
+    # Allow DNS resolution (CoreDNS / kube-dns)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow responses back to orchestration-service (MCP callbacks)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "agentic-framework.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: orchestration-service
+      ports:
+        - protocol: TCP
+          port: {{ .Values.orchestration_service.service.port }}
+    {{- if .Values.sandbox_mcp_server.networkPolicy.egressAllowlist }}
+    # Allowlisted external hosts (mirrors config/sandbox_egress_allowlist.yaml)
+    {{- range .Values.sandbox_mcp_server.networkPolicy.egressAllowlist }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr }}
+      ports:
+        {{- range .ports }}
+        - protocol: {{ .protocol | default "TCP" }}
+          port: {{ .port }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}

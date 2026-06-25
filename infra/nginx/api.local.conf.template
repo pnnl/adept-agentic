@@ -1,0 +1,653 @@
+# Complete NGINX configuration with authentication forwarding
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name api.agentic.local localhost ${NGINX_PUBLIC_FQDN};
+
+    # DNS resolver for runtime service discovery
+    # This allows nginx to start even if oauth2_proxy isn't ready yet
+    # Docker: 127.0.0.11 (default), Kubernetes: kube-dns.kube-system.svc.cluster.local
+    resolver ${NGINX_RESOLVER} valid=30s ipv6=off;
+    resolver_timeout 5s;
+
+    # SSL configuration
+    ssl_certificate /etc/nginx/certs/api.agentic.local.crt;
+    ssl_certificate_key /etc/nginx/certs/api.agentic.local.key;
+    
+    # Basic SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws://$host wss://$host; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+
+    # NGINX self-health check
+    location /health {
+        access_log off;
+        return 200 "nginx-proxy healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    # X-Accel internal location for efficient file serving
+    # This location is ONLY accessible via X-Accel-Redirect header from backend
+    location /internal-files/ {
+        internal;  # CRITICAL: Blocks direct external access
+        alias /app/data/uploaded_files/;
+
+        # Enable kernel-level zero-copy file transfers
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+
+        # Support Range requests (resume downloads, video seeking)
+        add_header Accept-Ranges bytes;
+
+        # Security headers
+        add_header X-Content-Type-Options nosniff;
+        add_header X-Frame-Options DENY;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Content-Security-Policy "default-src 'self'; script-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'none'; frame-ancestors 'none';" always;
+
+        # Cache control (TTL from presigned token)
+        add_header Cache-Control "private";
+    }
+
+    # Authentication endpoints (Keycloak)
+    location /auth/ {
+        proxy_pass http://keycloak/realms/master/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        
+        # Handle CORS for authentication
+        add_header Access-Control-Allow-Origin "*";
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+        
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+        
+        # Timeout settings
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+    
+    # Keycloak realms endpoints (for OIDC discovery generated URLs)
+    # Keycloak v2 hostname config generates URLs with /realms/ path
+    location /realms/ {
+        proxy_pass http://keycloak/realms/;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+
+        # Handle CORS for authentication
+        add_header Access-Control-Allow-Origin "*";
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+
+        # Timeout settings
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+
+    # Device flow endpoints
+    location /device {
+        proxy_pass http://keycloak/realms/master/device/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Presigned URL downloads - Route to backend nginx_file_proxy
+    # This bypasses agent_gateway and orchestration_service for performance
+    # CRITICAL: Must be BEFORE /v1/ location (more specific match takes precedence)
+    location ~ ^/v1/files/[^/]+/download {
+        # Backend nginx_file_proxy with embedded Python HMAC validation
+        proxy_pass http://nginx_file_proxy:8085;
+
+        # Preserve client information
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # CSP for presigned downloads — must be explicit because nginx add_header
+        # in a location block overrides ALL server-level add_header directives.
+        # Policy: allow rendering (img/style/font) but block scripts and external loads.
+        # No sandbox; — it breaks same-origin embedding (Claude Desktop plot <img>).
+        add_header Content-Security-Policy "default-src 'self'; script-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'none'; frame-ancestors 'none';" always;
+        add_header X-Content-Type-Options nosniff always;
+
+        # CORS for Claude Desktop plot embedding via presigned URLs
+        # Claude Desktop renders images from presigned URLs; without CORS
+        # the browser/webview blocks cross-origin image loads.
+        add_header Access-Control-Allow-Origin "*";
+        add_header Access-Control-Allow-Methods "GET, OPTIONS";
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+        add_header Access-Control-Expose-Headers "Content-Disposition, Content-Length";
+
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*";
+            add_header Access-Control-Allow-Methods "GET, OPTIONS";
+            add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+            add_header Access-Control-Max-Age 3600;
+            add_header Content-Length 0;
+            return 204;
+        }
+
+        # Streaming configuration (no buffering for large files)
+        proxy_buffering off;
+        proxy_request_buffering off;
+
+        # Timeouts for large files
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Error handling
+        proxy_intercept_errors on;
+        error_page 404 = @file_not_found;
+        error_page 401 = @unauthorized;
+    }
+
+    # Error page handlers for presigned URLs
+    location @file_not_found {
+        default_type application/json;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none';" always;
+        add_header X-Content-Type-Options nosniff always;
+        return 404 '{"detail": "File not found"}';
+    }
+
+    location @unauthorized {
+        default_type application/json;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none';" always;
+        add_header X-Content-Type-Options nosniff always;
+        return 401 '{"detail": "Invalid or expired token"}';
+    }
+
+    # API endpoints (Agent Gateway) - CRITICAL: Authentication forwarding
+    location /v1/ {
+        proxy_pass http://agent_gateway/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # CRITICAL: Forward authentication headers
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+
+        # CRITICAL: HTTP/1.1 required for chunked transfer encoding (SSE streaming)
+        # Without this, nginx defaults to HTTP/1.0 which buffers the entire response
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Handle large file uploads
+        client_max_body_size 100M;
+        proxy_request_buffering off;
+
+        # Timeout settings for long-running requests (AI processing)
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Handle streaming responses
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # A2A (Agent-to-Agent) endpoints - CRITICAL: For inter-gateway communication
+    location /a2a/ {
+        # Rate limiting for DoS protection (50 req/sec with burst of 100)
+        limit_req zone=api burst=100 nodelay;
+
+        proxy_pass http://agent_gateway/a2a/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # CRITICAL: Forward authentication headers for gateway-agents group
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+
+        # HTTP/1.1 for chunked transfer encoding (SSE streaming)
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Handle JSON-RPC payloads
+        client_max_body_size 50M;
+        proxy_request_buffering off;
+
+        # Timeout settings for A2A delegation
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Handle streaming responses
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # MCP (Model Context Protocol) endpoints
+    # Exact match prevents redirect loop: FastAPI strips trailing slash (307)
+    # while nginx adds it back (301) if only location /mcp/ {} exists.
+    location = /mcp {
+        proxy_pass http://agent_gateway/mcp;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 50M;
+        proxy_request_buffering off;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+    location /mcp/ {
+        proxy_pass http://agent_gateway/mcp/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # CRITICAL: Forward authentication headers
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+
+        # HTTP/1.1 for chunked transfer encoding (MCP SSE transport)
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Handle stdio protocol
+        client_max_body_size 50M;
+        proxy_request_buffering off;
+
+        # Timeout settings for MCP tools
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Handle streaming responses
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # Internal service routing for external client direct access
+    # Allows external clients to bypass agent_gateway and access services directly
+    location /internal/agent_gateway/ {
+        proxy_pass http://agent_gateway/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # HTTP/1.1 for chunked transfer encoding (SSE streaming)
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Timeout settings
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    location /internal/orchestration/ {
+        proxy_pass http://orchestration_service/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # HTTP/1.1 for chunked transfer encoding (SSE streaming)
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Timeout settings
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    location /internal/registry/ {
+        proxy_pass http://gateway_registry:8086/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # HTTP/1.1 for upstream keepalive pool
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Timeout settings
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # OpenWebUI ingress proxy with credential validation
+    location /openwebui/ {
+        # Remove the /openwebui prefix when proxying to OpenWebUI
+        rewrite ^/openwebui/(.*) /$1 break;
+        proxy_pass http://openwebui/;
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+        
+        # CRITICAL: Forward authentication headers for credential validation
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Cookie $http_cookie;
+        
+        # WebSocket support for OpenWebUI real-time features
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Handle large file uploads (models, documents)
+        client_max_body_size 500M;
+        proxy_request_buffering off;
+        
+        # Extended timeout settings for AI model operations
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        
+        # Streaming and real-time response support
+        proxy_buffering off;
+        proxy_cache off;
+        
+        # Security headers specific to OpenWebUI
+        add_header X-Frame-Options SAMEORIGIN;
+        add_header X-Content-Type-Options nosniff;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws://$host wss://$host; frame-ancestors 'self'; base-uri 'self'; form-action 'self';" always;
+
+        # CORS support for OpenWebUI API calls
+        add_header Access-Control-Allow-Origin "*";
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With";
+        
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+    }
+    
+    # OpenWebUI root redirect for convenience
+    location = /ui {
+        return 301 https://$http_host/openwebui/;
+    }
+
+    location = /ui/ {
+        return 301 https://$http_host/openwebui/;
+    }
+
+    # Streamlit v2 Application Interface
+    location /streamlit/ {
+        # CRITICAL: Path rewriting for dual access mode support
+        # Strips /streamlit/ prefix to enable:
+        # 1. Proxy access: https://api.agentic.local/streamlit/
+        # 2. Direct port access: http://localhost:8503
+        # 3. Proxy port forward: http://localhost:8443/streamlit/
+        # Pattern follows validated approach (relative paths work with all patterns)
+        # Reference: docs/troubleshooting/SESSION_36_FINAL_RECOMMENDATION.md
+        rewrite ^/streamlit/(.*) /$1 break;
+        proxy_pass http://streamlit_app_v2/;
+
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+
+        # WebSocket support for Streamlit real-time features
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Large file uploads
+        client_max_body_size 100M;
+        proxy_request_buffering off;
+
+        # Extended timeouts for AI operations
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Streaming support
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # Convenience redirect
+    location = /streamlit {
+        return 301 https://$http_host/streamlit/;
+    }
+
+    # Agent Gateway Management UI
+    location /mgmt-ui/ {
+        # CRITICAL: Path rewriting for dual access mode support
+        # Strips /mgmt-ui/ prefix to enable:
+        # 1. Proxy access: https://api.agentic.local/mgmt-ui/
+        # 2. Direct port access: http://localhost:8502
+        # 3. Proxy port forward: http://localhost:8443/mgmt-ui/
+        # Pattern follows validated approach (relative paths work with all patterns)
+        # Reference: docs/troubleshooting/SESSION_36_FINAL_RECOMMENDATION.md
+        rewrite ^/mgmt-ui/(.*) /$1 break;
+        proxy_pass http://agent_gateway_mgmt_ui/;
+
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+
+        # WebSocket support (Streamlit-based)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Standard Streamlit config
+        client_max_body_size 50M;
+        proxy_request_buffering off;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # Convenience redirect
+    location = /mgmt-ui {
+        return 301 https://$http_host/mgmt-ui/;
+    }
+
+    # OAuth2 Proxy authentication endpoints
+    location /oauth2/ {
+        # Use variable for runtime DNS resolution (avoids startup dependency)
+        set $oauth2_upstream http://oauth2_proxy:4180;
+        proxy_pass $oauth2_upstream;
+
+        # Rewrite oauth2_proxy redirects to preserve client's hostname AND port
+        # This enables port-forwarded access (e.g., ssh -L 8443:localhost:443)
+        # CRITICAL: Catch-all rule to rewrite ANY internal hostname to client's hostname
+        proxy_redirect ~^https://[^/]+/(.*) https://$http_host/$1;
+        proxy_redirect ~^http://[^/]+/(.*) https://$http_host/$1;
+
+        # Increase buffer sizes to handle large oauth2_proxy session cookies (Session 44)
+        # oauth2_proxy warning: "Multiple cookies required as session exceeds 4kb cookie limit"
+        # Without these settings, nginx returns "502 upstream sent too big header"
+        proxy_buffer_size 16k;
+        proxy_buffers 4 32k;
+        proxy_busy_buffers_size 64k;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port $server_port;
+    }
+
+    # JupyterLab Notebook Interface (with Keycloak SSO via oauth2-proxy)
+    location /jupyter/ {
+        # Use variable for runtime DNS resolution (avoids startup dependency)
+        set $oauth2_upstream http://oauth2_proxy:4180;
+        proxy_pass $oauth2_upstream; # Incorrectly set to "$oauth2_upstream/", previously, which strips /jupyterlab/ to /
+
+        # Rewrite oauth2_proxy and downstream redirects to preserve client's hostname AND port
+        # This enables port-forwarded access (e.g., ssh -L 8443:localhost:443)
+        # CRITICAL: Catch-all rule to rewrite ANY internal hostname to client's hostname
+        proxy_redirect ~^https://[^/]+/(.*) https://$http_host/$1;
+        proxy_redirect ~^http://[^/]+/(.*) https://$http_host/$1;
+
+        # Standard proxy headers (use $http_host to preserve port in Host header)
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port $server_port;
+
+        # WebSocket support for Jupyter kernels
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Large notebook files
+        client_max_body_size 100M;
+        proxy_request_buffering off;
+
+        # Extended timeouts for long-running kernels
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+
+        # Streaming for notebook output
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # Convenience redirect
+    location = /jupyter {
+        return 301 https://$http_host/jupyter/;
+    }
+
+    # n8n Workflow Automation Interface
+    location /n8n/ {
+        proxy_pass http://n8n/;
+
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+
+        # WebSocket support for real-time workflow execution
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Large workflow data
+        client_max_body_size 100M;
+        proxy_request_buffering off;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # Convenience redirect
+    location = /n8n {
+        return 301 https://$http_host/n8n/;
+    }
+
+    # Root — JSON API index
+    location = / {
+        default_type application/json;
+        return 200 '{"name": "ADEPT Agentic Framework", "version": "v1", "endpoints": {"api": "/v1/", "health": "/health", "auth": "/auth/", "openwebui": "/openwebui/", "langfuse": "/langfuse/", "n8n": "/n8n/"}}';
+    }
+
+    # Catch-all for undefined paths
+    location / {
+        default_type application/json;
+        return 404 '{"error": "Not Found", "message": "API endpoint not found. Use /v1/ for API calls, /auth/ for authentication, or /openwebui/ for web interface."}';
+    }
+}
+
+# HTTP server
+server {
+    listen 80;
+    server_name api.agentic.local localhost ${NGINX_PUBLIC_FQDN};
+
+    # Handle TLS-on-HTTP attempts (400 Bad Request with helpful message)
+    # This occurs when clients try to establish HTTPS on HTTP port
+    error_page 400 = @tls_on_http;
+
+    location @tls_on_http {
+        access_log off;
+        return 426 "TLS required - please use HTTPS (port 443) instead of HTTP (port 80)\n";
+        add_header Content-Type text/plain;
+    }
+
+    location /health {
+        access_log off;
+        return 200 "nginx-proxy healthy (http)\n";
+        add_header Content-Type text/plain;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

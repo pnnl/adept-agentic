@@ -1,0 +1,853 @@
+# docker-compose.core.yaml
+# Defines the core services of the Agentic Framework that are under active development.
+
+# Defines the secrets that will be created by the keycloak-setup service.
+# These are then mounted into the respective services.
+secrets:
+  AGENT_GATEWAY_CLIENT_ID:
+    file: ./.env-keycloak-credentials-dir/AGENT_GATEWAY_CLIENT_ID
+  AGENT_GATEWAY_CLIENT_SECRET:
+    file: ./.env-keycloak-credentials-dir/AGENT_GATEWAY_CLIENT_SECRET
+  KEYCLOAK_CLIENT_SECRET:
+    file: ./.env-keycloak-credentials-dir/KEYCLOAK_CLIENT_SECRET
+  N8N_CLIENT_SECRET:
+    file: ./.env-keycloak-credentials-dir/N8N_CLIENT_SECRET
+  OPENWEBUI_CLIENT_SECRET:
+    file: ./.env-keycloak-credentials-dir/OPENWEBUI_CLIENT_SECRET
+  REGISTRY_CLIENT_SECRET:
+    file: ./.env-keycloak-credentials-dir/REGISTRY_CLIENT_SECRET
+  SERVICE_API_KEYS_CONFIG:
+    file: ./.env-keycloak-credentials-dir/SERVICE_API_KEYS_CONFIG
+  OPENWEBUI_SERVICE_API_KEY:
+    file: ./.env-keycloak-credentials-dir/OPENWEBUI_SERVICE_API_KEY
+
+services:
+  nginx_proxy:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.nginx_proxy
+    container_name: nginx_proxy
+    profiles: ["apps"]
+    env_file:
+      - .env
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - nginx_certs:/etc/nginx/certs
+    environment:
+      - NGINX_RESOLVER=${NGINX_RESOLVER:-127.0.0.11}
+      - NGINX_PUBLIC_FQDN=${NGINX_PUBLIC_FQDN:-}
+      - NGINX_EXTRA_SANS=${NGINX_EXTRA_SANS:-}
+    networks:
+      frontend_net:
+        aliases:
+          - api.agentic.local
+      application_net:  # Proxies to agent_gateway, oauth2_proxy
+    labels:
+      - "tier=frontend"
+      - "security.role=reverse-proxy"
+    depends_on:
+      nginx_file_proxy:
+        condition: service_healthy
+      agent_gateway:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  nginx_file_proxy:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.nginx_file_proxy
+    container_name: nginx_file_proxy
+    profiles: ["apps"]
+    environment:
+      - PRESIGNED_URL_SECRET=${PRESIGNED_URL_SECRET}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - shared_uploads:/app/data/uploaded_files:ro  # Read-only access
+    networks:
+      - application_net  # Serves files to application tier
+      - data_net         # Accesses Redis for presigned URL validation
+    labels:
+      - "tier=tools"
+      - "security.role=file-proxy"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Internal only - no port exposure to host
+
+  agent_gateway:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.agent_gateway
+    container_name: agent_gateway
+    profiles: ["apps", "credential-setup"]
+    env_file:
+      - .env
+    secrets:
+      - AGENT_GATEWAY_CLIENT_ID
+      - AGENT_GATEWAY_CLIENT_SECRET
+      - SERVICE_API_KEYS_CONFIG
+    command: /app/.venv/bin/python -m agentic_framework_pkg.agent_gateway.main
+    ports:
+      - "8083:8081"
+    volumes:
+      - ../../../data:/app/data
+      - shared_uploads:/app/data/uploaded_files
+      - ./.env-keycloak-credentials-dir:/app/credentials
+    environment:
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - SECRET_RETRIEVAL_METHOD=file
+      - SECRET_FILE_PATH=/run/secrets
+      - AGENT_GATEWAY_CLIENT_SECRET_FILE=/run/secrets/agent_gateway_client_secret
+      - USE_CHECKPOINTING=true
+      - AGENT_GATEWAY_AUTH_ENABLED=true
+      - IDENTITY_PROVIDER=keycloak  # SECURITY: Pin to keycloak; blocks dormant authlib/Entra ID code path (ADEPT-SEC-2026-002, CVE-2026-27962)
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_EXTERNAL_URL=${KEYCLOAK_EXTERNAL_URL}
+      - KEYCLOAK_REALM=master
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - MCP_SERVER_URL=http://mcp_server:8080/mcp
+      - HPC_MCP_SERVER_URL=http://hpc_mcp_server:8081
+      - SANDBOX_MCP_SERVER_URL=http://sandbox_mcp_server:8082/mcp
+      - REDIS_URL=redis://redis:6379/0
+      - AGENT_GATEWAY_ALIAS=gateway-a # Example alias for this instance
+      - PUBLIC_GATEWAY_URL=${AGENT_GATEWAY_EXTERNAL_URL}
+      - AGENT_GATEWAY_CLIENT_ID=agent-gateway-client # For S2S auth
+      - KEYCLOAK_CLIENT_ID=agent-gateway-client # Also use this client for validating user tokens
+      - GATEWAY_REGISTRY_URL=http://gateway_registry:8086
+      - A2A_TRUSTED_PEER_JWKS_URLS=${A2A_TRUSTED_PEER_JWKS_URLS:-}
+      # Langfuse observability (explicit for A2A telemetry instrumentation)
+      - OBSERVABILITY_BACKEND=${OBSERVABILITY_BACKEND:-langfuse}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-http://langfuse-web:3000}
+    depends_on:
+      keycloak-setup:
+        condition: service_completed_successfully
+      vector_db_server:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      mcp_server:
+        condition: service_healthy
+      hpc_mcp_server:
+        condition: service_healthy
+      sandbox_mcp_server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      gateway_registry:
+        condition: service_healthy
+    networks:
+      - frontend_net     # Receives requests from nginx
+      - application_net  # Core business logic tier
+      - data_net         # Accesses Redis, Postgres, Keycloak
+      - adept_integration_network  # Langfuse telemetry (observability)
+    labels:
+      - "tier=application"
+      - "security.role=bridge"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  mcp_server:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.mcp_server
+    container_name: mcp_server
+    profiles: ["apps"]
+    # Runs as appuser (Dockerfile USER). Host-side quick-start handles data dir permissions.
+    env_file:
+      - .env
+      - .env-keycloak-credentials-dir/.env-keycloak-credentials
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../../../data:/app/data
+      - shared_uploads:/app/data/uploaded_files
+      - ../../../config:/app/config:ro
+    environment:
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - USE_CHECKPOINTING=true
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+      - RAG_BACKEND=${RAG_BACKEND:-auto}
+      - ENABLE_RAGFLOW=${ENABLE_RAGFLOW:-true}
+      - RAG_BACKEND_FALLBACK=${RAG_BACKEND_FALLBACK:-true}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION}
+      - VERTEXAI_PROJECT=${VERTEXAI_PROJECT}
+      - VERTEXAI_LOCATION=${VERTEXAI_LOCATION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION_NAME=${AWS_REGION_NAME}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE}
+      - AGENT_GATEWAY_AUTH_ENABLED=true
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - REDIS_URL=redis://redis:6379/0
+      - UV_CACHE_DIR=/tmp/.uv_cache
+      - AGENT_GATEWAY_URL=http://agent_gateway:8081
+      # Single worker (Session 62): stateless_http=True is the real fix (eliminates session affinity).
+      # Multi-worker causes silent worker crash loop due to heavy module-level initialization
+      # (13 tool modules, LLMAgnosticClient, Langfuse) in the parent process before uvicorn.run().
+      # Tracked for future fix in SESSION_62 tracker (lazy imports / thin launcher).
+      - UVICORN_WORKERS=1
+    restart: unless-stopped
+    depends_on:
+      vector_db_server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - application_net  # Receives requests from orchestration_service
+      - data_net         # Accesses Redis for caching, vector DB
+      - adept_integration_network  # Langfuse telemetry (observability)
+    labels:
+      - "tier=tools"
+      - "security.role=stateless-executor"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  orchestration_service:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.orchestration_service
+    container_name: orchestration_service
+    profiles: ["apps"]
+    env_file:
+      - .env
+      - .env-keycloak-credentials-dir/.env-keycloak-credentials
+    # IMPORTANT: MCP Server URLs are loaded from .env file (not overridden here)
+    # The following MCP variables must be set in .env WITH /mcp suffix:
+    #   - DEFAULT_MCP_SERVER_URL=http://mcp_server:8080/mcp
+    #   - HPC_MCP_SERVER_URL=http://hpc_mcp_server:8081/mcp
+    #   - SANDBOX_MCP_SERVER_URL=http://sandbox_mcp_server:8082/mcp
+    # FastMCP's http_app() creates a route at /mcp (built into the library).
+    # FastMCP Client does NOT add /mcp automatically - URL must include it.
+    environment:
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/agentic_orchestrator
+      - REDIS_URL=redis://redis:6379/0
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - GATEWAY_REGISTRY_URL=http://gateway_registry:8086
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_EXTERNAL_URL=${KEYCLOAK_EXTERNAL_URL}
+      - KEYCLOAK_REALM=master
+      - KEYCLOAK_CLIENT_ID=agent-gateway-client # Audience for forwarded tokens
+      - PRESIGNED_URL_SECRET=${PRESIGNED_URL_SECRET}
+      - PRESIGNED_URL_DEFAULT_TTL=${PRESIGNED_URL_DEFAULT_TTL:-3600}
+      - PRESIGNED_URL_MAX_TTL=${PRESIGNED_URL_MAX_TTL:-86400}
+      - NGINX_EXTERNAL_URL=${PUBLIC_BASE_URL}
+      - SECRET_RETRIEVAL_METHOD=file
+      - SECRET_FILE_PATH=/run/secrets
+      - A2A_TRUSTED_PEER_JWKS_URLS=${A2A_TRUSTED_PEER_JWKS_URLS:-}
+      - EMSL_FILES_BASE_URL=${EMSL_FILES_BASE_URL:-}
+      - EMSL_SANDBOX_FILES_TOKEN=${EMSL_SANDBOX_FILES_TOKEN:-}
+      - EMSL_SANDBOX_CA_CERT=${EMSL_SANDBOX_CA_CERT:-}
+      - EMSL_SANDBOX_SSL_VERIFY=${EMSL_SANDBOX_SSL_VERIFY:-true}
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      # pgvector RAG backend (separate PostgreSQL instance)
+      - PGVECTOR_DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres_rag:5432/agentic_rag
+      - RAG_BACKEND=${RAG_BACKEND:-auto}
+      - BM25_ENGINE=${BM25_ENGINE:-tsrank}
+      # Observability output truncation (prevents Langfuse/ClickHouse storage bloat)
+      - OBSERVABILITY_TRUNCATE_OUTPUT=${OBSERVABILITY_TRUNCATE_OUTPUT:-true}
+      - OBSERVABILITY_FULL_OUTPUT_LIMIT=${OBSERVABILITY_FULL_OUTPUT_LIMIT:-2000}
+      - OBSERVABILITY_TRUNCATED_OUTPUT_LIMIT=${OBSERVABILITY_TRUNCATED_OUTPUT_LIMIT:-500}
+    # Inject external CA certs into certifi bundle before starting the service.
+    # No-ops gracefully if no CA certs are mounted. Supports any hybrid-cloud
+    # MCP server (EMSL, partner labs, etc.) — not EMSL-specific.
+    command: ["/bin/sh", "/app/scripts/install-external-ca-certs.sh"]
+    volumes:
+      - shared_uploads:/app/data/uploaded_files
+      - ../../../scripts:/app/scripts:ro  # Read-only scripts mount for management tools
+      - ./.env-keycloak-credentials-dir:/app/credentials
+      - ../../../config:/app/config:ro
+      # EMSL sandbox CA cert for TLS verification (mount only if using HTTPS tunnel)
+      # Generate on EMSL side: make generate-certs → copy certs/ca.crt here
+      - ../../../examples/emsl_sandbox/certs/ca.crt:/usr/local/share/ca-certificates/emsl-sandbox-ca.crt:ro
+      # Slurm HPC CA cert for TLS verification (mount only if using HTTPS)
+      # Generate on Slurm side: make generate-certs → copy certs/ca.crt here
+      - ../../../examples/slurm_hpc/certs/ca.crt:/usr/local/share/ca-certificates/slurm-hpc-ca.crt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres_rag:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      vector_db_server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - application_net  # Core business logic tier
+      - data_net         # Accesses Redis, Postgres, Postgres RAG
+      - sandbox_net      # Bridges to sandbox_mcp_server (only service with access, #104)
+      - adept_integration_network  # RAGFlow backend + Langfuse telemetry
+    labels:
+      - "tier=application"
+      - "security.role=core"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  streamlit_app:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.streamlit_app
+    container_name: streamlit_app
+    profiles: ["apps"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../../../data:/app/data
+      - shared_uploads:/app/data/uploaded_files
+    env_file:
+      - .env
+    environment:
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - USE_CHECKPOINTING=true
+      - USE_LOCAL_MCP=False
+      # WARNING: streamlit_app MCP URLs include /mcp suffix (legacy pattern)
+      # These are hardcoded here because streamlit_app may use direct HTTP calls
+      # instead of FastMCP Client library. If streamlit_app uses FastMCP Client,
+      # these URLs should be updated to remove /mcp suffix to match .env pattern.
+      - MCP_SERVER_URL=http://mcp_server:8080/mcp
+      - HPC_MCP_SERVER_URL=http://hpc_mcp_server:8081
+      - SANDBOX_MCP_SERVER_URL=http://sandbox_mcp_server:8082/mcp
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - REDIS_URL=redis://redis:6379/0
+      - UV_CACHE_DIR=/tmp/.uv_cache
+    depends_on:
+      vector_db_server:
+        condition: service_healthy
+      mcp_server:
+        condition: service_healthy
+      hpc_mcp_server:
+        condition: service_healthy
+      sandbox_mcp_server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - frontend_net     # Receives user requests
+      - application_net  # Calls agent_gateway
+    labels:
+      - "tier=frontend"
+      - "security.isolation=user-interface"
+
+  streamlit_app_v2:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.streamlit_app
+    container_name: streamlit_app_v2
+    profiles: ["apps"]
+    ports:
+      - "8503:8503"
+    volumes:
+      - ../../../data:/app/data
+      - ../../../config:/app/config:ro
+      - shared_uploads:/app/data/uploaded_files
+    env_file:
+      - .env
+    environment:
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - AGENT_GATEWAY_URL=http://agent_gateway:8081/v1
+      - AGENT_GATEWAY_EXTERNAL_URL=${AGENT_GATEWAY_EXTERNAL_URL}
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_EXTERNAL_URL=${KEYCLOAK_EXTERNAL_URL}
+      - KEYCLOAK_REALM=master
+      - STREAMLIT_V2_SERVER_PORT=8503
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+      # CRITICAL: Override .env values with empty/correct paths for dual access mode
+      # Path handling now managed by Nginx rewrite rules for dual access mode
+      # Enables: 1) Proxy: https://api.agentic.local/streamlit/
+      #          2) Direct: http://localhost:8503
+      #          3) Port forward: http://localhost:8443/streamlit/
+      - STREAMLIT_BASE_URL_PATH=
+      # Remove /streamlit/ suffix from external URL to fix direct port access routing
+      - STREAMLIT_EXTERNAL_URL=https://api.agentic.local
+      # Enable debug logging
+      - STREAMLIT_LOGGER_LEVEL=debug
+      # Graceful degradation: App continues if cookie manager fails (timeout: 3s)
+      # Session persistence unavailable but app remains functional
+    command: ["/app/.venv/bin/python", "-m", "agentic_framework_pkg.streamlit_app_v2.main"]
+    depends_on:
+      agent_gateway:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - frontend_net     # Receives user requests
+      - application_net  # Calls agent_gateway
+      - data_net         # PostgreSQL access for session persistence
+    labels:
+      - "tier=frontend"
+      - "security.isolation=user-interface"
+
+  hpc_mcp_server:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.hpc
+    container_name: hpc_mcp_server
+    profiles: ["apps"]
+    ports:
+      - "${HPC_MCP_SERVER_PORT:-8081}:8081"
+    env_file:
+      - .env
+    environment:
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - USE_CHECKPOINTING=true
+      - LLM_CONFIG_PATH=${LLM_CONFIG_PATH:-}
+      - HPC_MCP_SERVER_PORT=${HPC_MCP_SERVER_PORT:-8081}
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - BLASTDB=/blast_databases
+      - VECTOR_DB_URL=http://vector_db_server:8001
+      - REDIS_URL=redis://redis:6379/0
+      - UV_CACHE_DIR=/tmp/.uv_cache
+      # Override PUBLIC_GATEWAY_URL to use public URL for any file URL generation
+      - PUBLIC_GATEWAY_URL=${AGENT_GATEWAY_EXTERNAL_URL}
+    volumes:
+      - ./blast_databases:/blast_databases
+      - ../../../data:/app/data
+      - shared_uploads:/app/data/uploaded_files
+      - ../../../config:/app/config:ro
+    networks:
+      - application_net  # Receives requests from orchestration_service
+      - data_net         # Accesses Redis, vector DB
+      - adept_integration_network  # Langfuse telemetry (observability)
+    labels:
+      - "tier=tools"
+      - "security.role=stateless-executor"
+    restart: unless-stopped
+    depends_on:
+      - vector_db_server
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  sandbox_mcp_server:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      args:
+        APP_UID: ${DOCKER_UID:-1000}
+        APP_GID: ${DOCKER_GID:-1000}
+        DOCKER_GID: ${DOCKER_GID:-999}
+      dockerfile: infra/dockerfiles/Dockerfile.sandbox
+    container_name: sandbox_mcp_server
+    profiles: ["apps"]
+    user: root  # Run entrypoint as root to fix bind-mount permissions, then drop to appuser
+    # SECURITY: No env_file — only explicitly listed vars enter the container.
+    # This prevents /proc/1/environ from containing secrets the sandbox doesn't need.
+    # See docs/security/SANDBOX_EGRESS_ALLOWLIST_SECURITY_ASSESSMENT.md (RISK-1, RISK-2).
+    environment:
+      # --- Service identity and networking ---
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - USE_CHECKPOINTING=true
+      - SANDBOX_MCP_SERVER_HOST=0.0.0.0
+      - SANDBOX_MCP_SERVER_PORT=8082
+      - SANDBOX_MCP_SERVER_NAME=${SANDBOX_MCP_SERVER_NAME:-AgenticFramework_Sandbox_MCP}
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-DEBUG}
+      # VECTOR_DB_URL removed — sandbox does not use vector DB (verified)
+      # REDIS_URL removed — sandbox does not use Redis directly (verified)
+      # AGENT_GATEWAY_URL removed — sandbox cannot reach gateway on sandbox_net (#104)
+      - ORCHESTRATION_SERVICE_URL=http://orchestration_service:8084
+      - PUBLIC_GATEWAY_URL=${AGENT_GATEWAY_EXTERNAL_URL}
+      # --- Observability (Langfuse) ---
+      # REMOVED: Langfuse env vars — sandbox no longer on integration_network (#104)
+      # Telemetry handled by orchestration_service which traces the full workflow
+      # - LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST removed
+      # --- Code execution configuration ---
+      # Docker-in-Docker volume configuration for nested containers
+      - SHARED_UPLOADS_VOLUME=${COMPOSE_PROJECT_NAME:-docker-compose}_shared_uploads
+      - EXECUTION_METHOD=subprocess
+      - SANDBOX_UVICORN_WORKERS=4
+      - SANDBOX_MAX_CONCURRENT_EXECUTIONS=5
+      - SANDBOX_MAX_CONCURRENT_DIND=3
+      - SANDBOX_PROCESS_POOL_WORKERS=4
+      - SANDBOX_WORKSPACE_PATH=/workspace
+      - SANDBOX_DEFAULT_TIMEOUT=${SANDBOX_DEFAULT_TIMEOUT:-30}
+      - SANDBOX_MAX_TIMEOUT=${SANDBOX_MAX_TIMEOUT:-300}
+      - SANDBOX_DOWNLOAD_TIMEOUT=${SANDBOX_DOWNLOAD_TIMEOUT:-120}
+      - SANDBOX_MEMORY_LIMIT=${SANDBOX_MEMORY_LIMIT:-2g}
+      - SANDBOX_MEMORY_SWAP_LIMIT=${SANDBOX_MEMORY_SWAP_LIMIT:-2g}
+      - SUBPROCESS_MEMORY_LIMIT_GB=${SUBPROCESS_MEMORY_LIMIT_GB:-30}
+      # --- Egress allowlist enforcement (nftables-based, fail-closed) ---
+      - SANDBOX_EGRESS_RESTRICTION_ENABLED=${SANDBOX_EGRESS_RESTRICTION_ENABLED:-true}
+      # --- Subprocess identity (Gurobi token server auth, #726) ---
+      # Token server validates OS whoami, not license file USERNAME field.
+      # When set, subprocess switches UID to this user before executing code.
+      - SANDBOX_EXEC_USER=${SANDBOX_EXEC_USER:-}
+      - SANDBOX_EXEC_UID=${SANDBOX_EXEC_UID:-1500}
+      - SANDBOX_EXEC_GID=${SANDBOX_EXEC_GID:-1200}
+      # --- Gurobi token server support (opt-in) ---
+      # License file path inside container. Subprocess does NOT inherit this env var
+      # (restricted env); instead, sandbox code uses runtime path search pattern.
+      # Place license file at data/uploaded_files/gurobi.lic (shared volume) to enable.
+      - GRB_LICENSE_FILE=${GRB_LICENSE_FILE:-}
+      # --- nsjail syscall filtering (kernel-level sandbox, #120) ---
+      # DISABLED: nsjail breaks plot generation — /tmp is ephemeral tmpfs, pip install
+      # fails on read-only venv. Re-enable after fixing output directory mapping.
+      # See docs/implementation-plans/NSJAIL_SANDBOX_SYSCALL_FILTERING_PLAN.md
+      - SANDBOX_USE_NSJAIL=${SANDBOX_USE_NSJAIL:-false}
+    # Gurobi token server DNS (opt-in). When GRB_TOKEN_SERVER_HOST is set to a real
+    # hostname, Docker injects it into /etc/hosts. Default "_disabled" is a no-op.
+    extra_hosts:
+      - "${GRB_TOKEN_SERVER_HOST:-_disabled}:${GRB_TOKEN_SERVER_IP:-127.0.0.1}"
+    # SECURITY NOTE: privileged mode is ONLY required when EXECUTION_METHOD=docker-in-docker
+    # (needed for DinD to spawn child containers). For EXECUTION_METHOD=subprocess, this can be false.
+    # See docs/security/SANDBOX_EXECUTION_METHOD_SECURITY.md for risk assessment.
+    privileged: ${SANDBOX_PRIVILEGED:-false}
+    cap_drop:
+      - ALL  # Drop all capabilities first (principle of least privilege)
+    cap_add:
+      - NET_ADMIN  # nftables egress allowlist rule manipulation (entrypoint only)
+      - SYS_ADMIN  # nsjail namespace creation (PID, mount, IPC, UTS namespaces)
+      - SETPCAP    # nsjail PR_SET_SECUREBITS for capability management in jail
+      - CHOWN      # chown in entrypoint for shared volume permissions
+      - DAC_OVERRIDE  # File permission override during entrypoint setup
+      - FOWNER     # File ownership operations in entrypoint
+      - SETUID     # gosu privilege drop (root -> appuser)
+      - SETGID     # gosu privilege drop (root -> appgroup)
+    # NOTE: no-new-privileges conflicts with gosu (needs setuid to drop to appuser).
+    # Privilege escalation prevented by: appuser has 0 capabilities (CapEff=0) after gosu drop.
+    # SYS_ADMIN is needed by nsjail for namespace creation (user.max_user_namespaces=0 on host).
+    # After gosu drops to appuser, CapEff=0 — SYS_ADMIN is NOT available to jailed code.
+    security_opt:
+      - seccomp:unconfined  # Required for nsjail clone(CLONE_NEWNS|CLONE_NEWPID) inside container
+    deploy:
+      resources:
+        limits:
+          memory: 10G        # Maximum RAM the container can use
+          cpus: '4'         # Maximum CPU cores (optional)
+        reservations:
+          memory: 2G        # Guaranteed minimum RAM (optional)
+    ports:
+      - "8082:8082"
+    networks:
+      - sandbox_net  # Dedicated network — only orchestration_service can reach sandbox (#104)
+      # NO adept_integration_network — exposes sandbox to agent_gateway, mcp_server, etc. (#104)
+      # Langfuse telemetry handled by orchestration_service (traces full workflow already)
+      # NO application_net — prevents lateral movement to keycloak, agent_gateway, other MCP servers
+      # NO data_net — sandbox has no database access
+    labels:
+      - "tier=tools"
+      - "security.role=sandboxed-executor"
+      - "security.isolation=strict"
+    volumes:
+      # SECURITY: Only mount uploaded_files (shared workspace) and sandbox workspace
+      # Restricted from: postgres_data, nginx_certs, n8n_data, redis_data (Session 50 Phase 0)
+      - shared_uploads:/app/data/uploaded_files
+      - sandbox_workspace:/workspace
+      # Egress allowlist config (operator-provided, read-only)
+      - ../../../config/sandbox_egress_allowlist.yaml:/app/config/sandbox_egress_allowlist.yaml:ro
+      # nsjail config (seccomp policy + sandbox config, read-only)
+      - ../../../config/nsjail:/etc/nsjail:ro
+      # Docker socket: ONLY mount if EXECUTION_METHOD=docker-in-docker.
+      # Default (subprocess) does NOT need it. See docker-compose.dind.yaml for opt-in.
+      # Risk: raw socket enables full privilege escalation (docker inspect → all secrets).
+      # If DinD required, use docker-compose.dind.yaml override (mounts raw socket).
+      # Compensating controls: CC-SANDBOX-01 (egress), CC-SANDBOX-02 (no nsjail)
+      # Ref: docs/security/SANDBOX_EXECUTION_METHOD_SECURITY.md §7
+    tmpfs:
+      # Hybrid session isolation: tmpfs for secure execution, shared volume for persistence
+      # noexec: Prevent code execution from tmpfs (security)
+      # nosuid: Prevent setuid binaries (security)
+      # mode=1777: World-writable with sticky bit (like /tmp)
+      # size=1g: Increased size for multiple concurrent sessions
+      - /tmp/sandbox_sessions:noexec,nosuid,mode=1777,size=1g
+    depends_on:
+      orchestration_service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  agent_gateway_mgmt_ui:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.agent_gateway_mgmt_ui
+    container_name: agent_gateway_mgmt_ui
+    profiles: ["apps", "credential-setup"]
+    env_file:
+      - .env
+    secrets:
+      - KEYCLOAK_CLIENT_SECRET
+    ports:
+      - "8502:8502"
+    # REMOVED: --server.baseUrlPath=/mgmt-ui/ from command
+    # Path handling now managed by Nginx rewrite rules for dual access mode
+    command: python -m streamlit run src/agentic_framework_pkg/agent_gateway/ui/app.py --server.port=8502 --server.address=0.0.0.0
+    environment:
+      - SECRET_RETRIEVAL_METHOD=file
+      - SECRET_FILE_PATH=/run/secrets
+      - AGENT_GATEWAY_API_URL=http://agent_gateway:8081
+      - KEYCLOAK_CLIENT_ID=mgmt-ui-client
+      - KEYCLOAK_CLIENT_SECRET_FILE=/run/secrets/KEYCLOAK_CLIENT_SECRET
+      - MGMT_UI_CONFIG_PATH=/app/src/agentic_framework_pkg/agent_gateway/ui/config.yaml
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_EXTERNAL_URL=${KEYCLOAK_EXTERNAL_URL}
+      - KEYCLOAK_REALM=master
+      - KEYCLOAK_ADMIN_USER=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_ADMIN_CLI_SECRET=${KC_ADMIN_CLI_SECRET:-}
+      - REDIS_URL=redis://redis:6379/0
+      # CRITICAL: Override .env value with empty string for dual access mode
+      # Path handling now managed by Nginx rewrite rules for dual access mode
+      - STREAMLIT_BASE_URL_PATH=
+    volumes:
+      - ./.env-keycloak-credentials-dir:/app/credentials
+      - mgmt_ui_data:/app/data
+    networks:
+      - frontend_net     # Admin UI interface
+      - application_net  # Calls agent_gateway APIs
+    labels:
+      - "tier=frontend"
+      - "security.role=admin-ui"
+    depends_on:
+      keycloak-setup:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mcp_server:
+        condition: service_healthy
+      hpc_mcp_server:
+        condition: service_healthy
+      sandbox_mcp_server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gateway_registry:
+    platform: linux/amd64
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.gateway_registry
+    container_name: gateway_registry
+    profiles: ["apps", "credential-setup"]
+    ports:
+      - "8086:8086"
+    env_file:
+      - .env
+    secrets:
+      - REGISTRY_CLIENT_SECRET
+    environment:
+      - SECRET_RETRIEVAL_METHOD=file
+      - SECRET_FILE_PATH=/run/secrets
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password}@postgres:5432/agentic_registry
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_REALM=master
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - REGISTRY_CLIENT_ID=gateway-registry-client
+      - REGISTRY_CLIENT_SECRET_FILE=/run/secrets/REGISTRY_CLIENT_SECRET
+      - ALLOWED_PEER_CIDRS=${ALLOWED_PEER_CIDRS:-}
+    volumes:
+      - ./.env-keycloak-credentials-dir:/app/credentials
+    depends_on:
+      keycloak-setup:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      # postgres-setup:
+      #   condition: service_completed_successfully
+    networks:
+      - application_net  # Core business logic tier
+      - data_net         # Accesses Postgres for registry
+      - adept_integration_network  # Langfuse telemetry (observability)
+    labels:
+      - "tier=application"
+      - "security.role=registry"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  jupyterlab:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.jupyterlab
+    container_name: jupyterlab
+    profiles: ["apps"]
+    user: "${UID}:${GID}"  # from .env
+    working_dir: /home/jovyan/work
+    healthcheck:
+      # TCP-based health check to avoid HTTP token generation
+      # Issue #1: /api and /api/status endpoints generate 17,280 tokens/day
+      # Solution: Check if port 8888 is open using bash built-in (no external tools required)
+      # Reference: docs/troubleshooting/SESSION_36_JUPYTERLAB_HEALTHCHECK_INVESTIGATION.md
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8888' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    ports:
+      - "8888:8888"
+    volumes:
+      # SECURITY: Only mount uploaded_files (shared workspace) and notebooks
+      # Restricted from: postgres_data, nginx_certs, n8n_data, redis_data (Session 50 Phase 0)
+      - shared_uploads:/home/jovyan/work/data/uploaded_files
+      - ../../../notebooks:/home/jovyan/work/notebooks
+    env_file:
+      - ./.env
+      - ./.env-keycloak-credentials-dir/.env-keycloak-credentials
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --config=/home/jovyan/.jupyter/jupyter_lab_config.py
+    environment:
+      # OAuth Configuration (browser-facing URLs use external Keycloak)
+      - JUPYTERLAB_CLIENT_ID=jupyterlab-client
+      # JUPYTERLAB_CLIENT_SECRET loaded from env_file (.env-keycloak-credentials)
+      - JUPYTERLAB_OAUTH_CALLBACK_URL=${JUPYTER_EXTERNAL_URL}oauth_callback
+      - KEYCLOAK_AUTHORIZE_URL=${KEYCLOAK_EXTERNAL_URL}/realms/master/protocol/openid-connect/auth
+      - KEYCLOAK_TOKEN_URL=https://nginx_proxy/realms/master/protocol/openid-connect/token
+      - KEYCLOAK_USERDATA_URL=https://nginx_proxy/realms/master/protocol/openid-connect/userinfo
+
+      # Base URL Configuration
+      - JUPYTER_BASE_URL=/jupyter/
+
+      # Keycloak Configuration (routed through nginx_proxy on frontend_net)
+      - KEYCLOAK_URL=https://nginx_proxy
+      - KEYCLOAK_EXTERNAL_URL=${KEYCLOAK_EXTERNAL_URL}
+      - KEYCLOAK_REALM=master
+
+      # API access (all routed through nginx_proxy — JupyterLab is isolated on frontend_net)
+      - ADEPT_API_BASE_URL=https://nginx_proxy/v1
+      - SHARED_UPLOAD_DIR=/app/data/uploaded_files
+      - AGENT_GATEWAY_AUTH_ENABLED=true
+      - LOGGING_LEVEL=${LOGGING_LEVEL:-INFO}
+      - NOTEBOOK_USER_PASSWORD=${NOTEBOOK_USER_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - frontend_net  # Isolated: notebooks route through nginx_proxy (JWT-gated)
+    labels:
+      - "tier=frontend"
+      - "security.role=user-code"
+      - "security.isolation=user-code"
+      - "security.threat-level=high"
+
+  # OAuth2 Proxy for JupyterLab authentication via Keycloak
+  oauth2_proxy:
+    build:
+      context: ../../..
+      dockerfile: infra/dockerfiles/Dockerfile.oauth2_proxy
+    container_name: oauth2_proxy
+    profiles: ["apps"]
+    env_file:
+      - ./.env
+      - ./.env-keycloak-credentials-dir/.env-keycloak-credentials
+    environment:
+      # OAuth2 Proxy configuration via environment variables
+      # Note: OAUTH2_PROXY_CLIENT_SECRET and OAUTH2_PROXY_COOKIE_SECRET loaded from env_file (.env-keycloak-credentials)
+      # Bootstrap script generates these automatically during Keycloak setup
+      - OAUTH2_PROXY_PROVIDER=keycloak-oidc
+      - OAUTH2_PROXY_CLIENT_ID=jupyterlab-client
+      # CRITICAL: Use /realms/master path directly (not /auth) to match Keycloak's actual OIDC issuer
+      # Keycloak returns "issuer": "https://<host>/realms/master" in OIDC discovery and JWT tokens
+      # The /auth path is rewritten by nginx but shouldn't be used for OIDC issuer URL
+      # See: docs/bugfixes/SESSION_53_OAUTH2_PROXY_CREDENTIAL_RELOADING_FIX.md (Issue 2)
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=${PUBLIC_BASE_URL}/realms/master
+      # OAUTH2_PROXY_REDIRECT_URL not set - constructed dynamically from Host header (enables port forwarding)
+      # - OAUTH2_PROXY_REDIRECT_URL=${PUBLIC_BASE_URL}/oauth2/callback
+      - OAUTH2_PROXY_UPSTREAMS=http://jupyterlab:8888
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_COOKIE_SECURE=false
+      - OAUTH2_PROXY_COOKIE_DOMAIN=${PUBLIC_HOSTNAME:-api.agentic.local}
+      - OAUTH2_PROXY_WHITELIST_DOMAINS=.${PUBLIC_HOSTNAME:-api.agentic.local}
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*
+      - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+      - OAUTH2_PROXY_PASS_ACCESS_TOKEN=true
+      - OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER=true
+      - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+      - OAUTH2_PROXY_REVERSE_PROXY=true
+      - OAUTH2_PROXY_REAL_CLIENT_IP_HEADER=X-Real-IP
+      - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+      - OAUTH2_PROXY_SSL_INSECURE_SKIP_VERIFY=true  # Skip TLS verification for self-signed certs (dev only)
+      - OAUTH2_PROXY_INSECURE_OIDC_SKIP_ISSUER_VERIFICATION=true  # Skip issuer verification (dev only)
+      - OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true  # Allow unverified emails (dev only, enables users without email verification)
+    command:
+      - --code-challenge-method=S256  # Enable PKCE (Proof Key for Code Exchange) for enhanced security
+    # ports:
+    #   - "4180:4180"  # REMOVED: oauth2_proxy should NOT be exposed externally
+    # oauth2_proxy is only accessible via nginx_proxy on internal Docker network
+    depends_on:
+      keycloak-setup:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      jupyterlab:
+        condition: service_started
+      nginx_proxy:
+        condition: service_healthy
+    restart: unless-stopped
+    extra_hosts:
+      - "api.agentic.local:host-gateway"  # Map to Docker host (nginx listens on host ports 80/443)
+    networks:
+      - frontend_net     # Receives requests from nginx
+      - application_net  # Validates with keycloak via agent_gateway
+    labels:
+      - "tier=frontend"
+      - "security.role=auth-proxy"
+

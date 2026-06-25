@@ -1,0 +1,9 @@
+# For a local cluster
+helm install my-agentic-release ./helm/agentic-framework/
+
+# To enable ingress on a local cluster with an NGINX ingress controller
+helm install my-agentic-release ./helm/agentic-framework/ \
+  --set ingress.enabled=true \
+  --set ingress.className=nginx \
+  --set ingress.hosts[0].host=agent.local
+

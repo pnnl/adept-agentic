@@ -1,0 +1,7 @@
+# Ignore all generated artifacts (certificates, configs, scripts)
+# These should NEVER be committed to version control
+*
+
+# But keep the .gitkeep and .gitignore files themselves
+!.gitkeep
+!.gitignore

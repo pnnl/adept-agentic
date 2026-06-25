@@ -1,0 +1,21 @@
+# infra/dockerfiles/Dockerfile.orchestration_service
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+FROM ${DEPS_BASE_IMAGE}
+
+# USER appuser inherited from base image - all operations run as appuser
+
+# 1. Copy pyproject.toml first (needed for pip install)
+COPY --chown=appuser:appgroup pyproject.toml ./
+
+# 2. Copy the source code with explicit ownership
+COPY --chown=appuser:appgroup src/ ./src/
+
+# 3. Perform the editable install (runs as appuser)
+RUN uv pip install --no-cache-dir --editable .
+
+# No chown needed - all files created as appuser from the start!
+
+# 3. Define the runtime command
+EXPOSE 8084
+CMD ["python", "-m", "agentic_framework_pkg.orchestration_service.main"]
+# Force rebuild on Tue Aug 19 23:36:06 UTC 2025

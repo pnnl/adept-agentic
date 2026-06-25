@@ -1,0 +1,15 @@
+---
+# Post-deployment validation role
+# Validates deployment across all cloud providers
+
+- name: Display validation start message
+  debug:
+    msg: "Starting deployment validation for {{ deployment.cloud_provider | upper }}"
+
+- name: Run cloud-specific validation
+  include_tasks: "validate-{{ deployment.cloud_provider }}.yml"
+  when: deployment.cloud_provider in ['aws', 'azure', 'gcp']
+
+- name: Display validation completion message
+  debug:
+    msg: "Validation completed for {{ deployment.cloud_provider | upper }} deployment"

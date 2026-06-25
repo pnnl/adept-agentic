@@ -1,0 +1,39 @@
+version: '3.8'
+
+networks:
+  adept_application_network:
+    external: true
+  adept_frontend_network:
+    external: true
+
+services:
+  demo_bootstrap:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: examples/demo-bootstrap/Dockerfile
+    container_name: demo_bootstrap
+    profiles: ["bootstrap"]
+    environment:
+      - GATEWAY_REGISTRY_URL=http://gateway_registry:8086
+      - KEYCLOAK_URL=http://keycloak:8180
+      - KEYCLOAK_REALM=master
+      - VALIDATION_RUNNER_CLIENT_ID=${VALIDATION_RUNNER_CLIENT_ID}
+      - VALIDATION_RUNNER_CLIENT_SECRET=${VALIDATION_RUNNER_CLIENT_SECRET}
+    volumes:
+      - ../../deployment/local/docker-compose/.env-keycloak-credentials-dir:/app/credentials:ro
+      - /etc/letsencrypt:/etc/letsencrypt  # Let's Encrypt certificate storage
+      - ./output:/output  # Artifact export directory
+    networks:
+      - adept_application_network
+      - adept_frontend_network
+    depends_on:
+      gateway_registry:
+        condition: service_healthy
+    restart: "no"  # One-shot execution
+    healthcheck:
+      test: ["CMD", "python", "-c", "import agentic_framework_sdk; print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

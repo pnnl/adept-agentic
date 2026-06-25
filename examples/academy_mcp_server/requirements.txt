@@ -1,0 +1,10 @@
+fastapi>=0.115.5
+uvicorn[standard]>=0.32.1
+fastmcp>=2.12.5,<2.13.0
+mcp>=1.13.0,<2.0
+pydantic>=2.10.3
+pydantic-settings>=2.0.0
+redis>=5.0.0
+academy-py>=0.3.1
+globus-sdk>=3.43.0
+globus-compute-sdk>=2.25.0

@@ -1,0 +1,18 @@
+# PostgreSQL for Langfuse - Internalized Image
+# This Dockerfile internalizes the PostgreSQL image for consistent artifact management
+
+FROM postgres:17-alpine
+
+# Metadata
+LABEL maintainer="paul.rigor@pnnl.gov"
+LABEL description="Internalized PostgreSQL for Langfuse observability backend"
+LABEL version="15-alpine"
+
+# No modifications currently needed - this is for image standardization
+# Future customizations can be added here:
+# - Custom PostgreSQL configurations
+# - Performance tuning for observability workloads
+# - Additional extensions
+# - Backup and recovery tools
+
+# The entrypoint and CMD are inherited from the base image

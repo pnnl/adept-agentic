@@ -1,0 +1,19 @@
+FROM unit:python3.11
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    starlette==0.35.1 \
+    redis[hiredis]==5.0.1
+
+# Copy Python ASGI application
+COPY src/agentic_framework_pkg/nginx_file_proxy /app/nginx_file_proxy
+
+# Fix permissions for NGINX Unit to read Python files
+RUN chmod -R 755 /app/nginx_file_proxy
+
+# Copy NGINX Unit configuration
+COPY infra/nginx/nginx_file_proxy_unit_config.json /docker-entrypoint.d/config.json
+
+EXPOSE 8085
+
+# NGINX Unit starts automatically via base image

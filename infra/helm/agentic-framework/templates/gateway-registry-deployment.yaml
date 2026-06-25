@@ -1,0 +1,48 @@
+{{- if .Values.gateway_registry.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-gateway-registry
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway-registry
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentic-framework.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gateway-registry
+  template:
+    metadata:
+      labels:
+        {{- include "agentic-framework.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway-registry
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway-registry
+          image: "{{ .Values.gateway_registry.image.repository }}:{{ .Values.gateway_registry.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.gateway_registry.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway_registry.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentic-framework.fullname" . }}-config
+            - secretRef:
+                name: {{ if .Values.secrets.create }}{{ include "agentic-framework.fullname" . }}-secrets{{ else }}{{ .Values.secrets.existingSecretName }}{{ end }}
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ include "agentic-framework.fullname" . }}-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.db }}"
+            - name: KEYCLOAK_URL
+              value: "http://{{ include "agentic-framework.fullname" . }}-keycloak:{{ .Values.keycloak.service.port }}"
+            - name: KEYCLOAK_REALM
+              value: "{{ .Values.keycloak.realm }}"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

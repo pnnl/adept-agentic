@@ -1,0 +1,80 @@
+# Docker Compose for Academy MCP Server
+#
+# 3-service stack: Redis + MCP Server + Nginx Proxy
+# Follows the canonical ADEPT external MCP server pattern.
+#
+# Prerequisites:
+#   - adept_application_network must exist (created by core stack)
+#
+# Usage:
+#   docker compose up -d --build
+#   curl http://localhost:9004/health
+#   make register-tools    # Register 4 tools with ADEPT
+
+services:
+  academy_redis:
+    image: redis:7-alpine
+    container_name: academy_redis
+    hostname: academy-redis
+    ports:
+      - "${ACADEMY_REDIS_PORT:-6384}:6379"
+    networks:
+      - adept_application_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  academy_mcp_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: academy_mcp_server
+    ports:
+      - "9004:9004"
+    environment:
+      ACADEMY_PORT: "9004"
+      ACADEMY_REDIS_URL: "redis://academy_redis:6379/0"
+      ACADEMY_LOG_LEVEL: "${ACADEMY_LOG_LEVEL:-INFO}"
+    networks:
+      - adept_application_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      academy_redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  academy_nginx_proxy:
+    image: nginx:alpine
+    container_name: academy_nginx_proxy
+    ports:
+      - "${ACADEMY_HTTP_PORT:-9020}:80"
+      - "${ACADEMY_HTTPS_PORT:-9021}:443"
+    volumes:
+      - ./academy_proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./certs:/etc/nginx/ssl:ro
+    environment:
+      MCP_SERVER_HOST: academy_mcp_server
+      MCP_SERVER_PORT: "9004"
+    networks:
+      - adept_application_network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      academy_mcp_server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  adept_application_network:
+    external: true

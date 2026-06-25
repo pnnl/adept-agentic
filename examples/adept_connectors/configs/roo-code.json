@@ -1,0 +1,6 @@
+{
+  "roo.apiProvider": "openai-compatible",
+  "roo.openaiCompatible.baseUrl": "http://localhost:19283/v1",
+  "roo.openaiCompatible.model": "agentic-framework:scientific-agent-v1",
+  "roo.openaiCompatible.apiKey": "not-needed-proxy-handles-auth"
+}

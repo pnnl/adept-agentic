@@ -1,0 +1,216 @@
+# ADEPT Platform Model Catalog
+#
+# Declarative catalog of LLM purposes, providers, and role aliases for
+# multi-agent team configuration. Loaded at startup by LLMAgnosticClient
+# and MultiAgentManager.
+#
+# Adding a new domain model requires only:
+#   1. Add a purpose entry below (or reuse an existing one)
+#   2. Add role aliases that map to that purpose
+#   3. Set the env var in .env (e.g., BIOLOGY_AGENT_DEFAULT_MODEL=bedrock/...)
+#
+# Env vars use ${VAR} notation for documentation only — actual resolution
+# happens via os.getenv() at runtime in llm_agnostic_layer.py.
+#
+# Path override: MODEL_CATALOG_PATH env var (default: config/model_catalog.yaml)
+#
+# ADDITIVE ROUTING: This catalog is additive, not restrictive. Any role name
+# not listed in role_aliases will still work — it falls back to agent_main
+# (DEFAULT_LLM_MODEL) via RolePersona.effective_llm_purpose. You only need
+# to add a role alias when you want to route it to a specialized model.
+
+purposes:
+  # --- Existing purposes (backward compatible with hardcoded defaults) ---
+
+  agent_main:
+    description: "General reasoning and conversational tasks"
+    env_var: "DEFAULT_LLM_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+        notes: "Default for most tasks"
+      - name: bedrock-claude-sonnet
+        model: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        provider: aws_bedrock
+        cost_tier: medium
+        notes: "Strong reasoning, good for complex tasks"
+      - name: aqe-ldrd-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+        endpoint: "https://aqe-ldrd-openai.openai.azure.com"
+        api_version: "2025-01-01-preview"
+        credentials:
+          api_key_env: AQE_LDRD_AZURE_API_KEY
+          api_base_env: AQE_LDRD_AZURE_API_BASE
+        notes: "AQE LDRD Azure OpenAI deployment (pending API key provisioning)"
+
+  coding_agent:
+    description: "Code generation, debugging, security review"
+    env_var: "CODING_AGENT_DEFAULT_MODEL"
+    providers:
+      - name: bedrock-claude-sonnet
+        model: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        provider: aws_bedrock
+        cost_tier: medium
+        notes: "Default coding model"
+      - name: bedrock-claude-opus
+        model: "bedrock/anthropic.claude-3-opus-20240229-v1:0"
+        provider: aws_bedrock
+        cost_tier: high
+        notes: "Most capable — use for complex architecture decisions"
+
+  rag:
+    description: "Document RAG query generation"
+    env_var: "RAG_DEFAULT_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  embedding:
+    description: "Vector embeddings for RAG and similarity search"
+    env_var: "EMBEDDING_DEFAULT_MODEL"
+    providers:
+      - name: azure-ada-002
+        model: "text-embedding-ada-002"
+        provider: azure
+        cost_tier: low
+      - name: azure-embedding-3-large
+        model: "text-embedding-3-large"
+        provider: azure
+        cost_tier: low
+        notes: "Higher dimensional, better retrieval accuracy"
+
+  streamlit:
+    description: "Streamlit UI chat interactions"
+    env_var: "STREAMLIT_DEFAULT_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  agent_supervisor:
+    description: "Multi-agent supervisor routing and delegation"
+    env_var: "DEFAULT_LLM_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  agent_planner:
+    description: "Multi-agent plan generation and task decomposition"
+    env_var: "DEFAULT_LLM_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  session_summary:
+    description: "Session summary generation"
+    env_var: "DEFAULT_LLM_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  generic:
+    description: "General fallback purpose"
+    env_var: "DEFAULT_LLM_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  # --- New domain-specific purposes ---
+
+  biology_agent:
+    description: "Biological data analysis, protein structure, genomics"
+    env_var: "BIOLOGY_AGENT_DEFAULT_MODEL"
+    providers:
+      - name: bedrock-claude-sonnet
+        model: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        provider: aws_bedrock
+        cost_tier: medium
+        notes: "General model with biology prompts"
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  chemistry_agent:
+    description: "Chemical analysis, reaction prediction, molecular design"
+    env_var: "CHEMISTRY_AGENT_DEFAULT_MODEL"
+    providers:
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+      - name: bedrock-claude-sonnet
+        model: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        provider: aws_bedrock
+        cost_tier: medium
+
+  data_scientist:
+    description: "Statistical analysis, ML pipelines, data visualization"
+    env_var: "DATA_SCIENTIST_DEFAULT_MODEL"
+    providers:
+      - name: bedrock-claude-sonnet
+        model: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        provider: aws_bedrock
+        cost_tier: medium
+      - name: azure-gpt-4o
+        model: "azure/gpt-4o"
+        provider: azure
+        cost_tier: medium
+
+  hpc_agent:
+    description: "HPC job management, Slurm scripts, batch scheduling"
+    env_var: "HPC_AGENT_DEFAULT_MODEL"
+    providers:
+      - name: bedrock-claude-sonnet
+        model: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        provider: aws_bedrock
+        cost_tier: medium
+
+# Role name aliases — maps informal role names to LLM purposes.
+# When a role is passed as a plain string to CreateMultiAgentSession,
+# these names automatically get the corresponding llm_purpose instead
+# of defaulting to agent_main.
+#
+# Merged with (and overrides) the hardcoded ROLE_NAME_TO_LLM_PURPOSE
+# dict in multi_agent_manager.py at startup.
+role_aliases:
+  # Coding aliases (matches existing hardcoded entries)
+  coding_agent: coding_agent
+  coder: coding_agent
+  developer: coding_agent
+  programmer: coding_agent
+  python_developer: coding_agent
+  software_engineer: coding_agent
+  # Biology aliases
+  biologist: biology_agent
+  biology_agent: biology_agent
+  genomics_researcher: biology_agent
+  protein_analyst: biology_agent
+  bioinformatician: biology_agent
+  # Chemistry aliases
+  chemist: chemistry_agent
+  chemistry_agent: chemistry_agent
+  materials_scientist: chemistry_agent
+  # Data science aliases
+  data_scientist: data_scientist
+  statistician: data_scientist
+  ml_engineer: data_scientist
+  # HPC aliases
+  hpc_engineer: hpc_agent
+  hpc_agent: hpc_agent
+  slurm_admin: hpc_agent

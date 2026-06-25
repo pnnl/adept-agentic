@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-redis
+  labels:
+    {{- include "{{NAME}}-mcp.redisLabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "{{NAME}}-mcp.redisSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "{{NAME}}-mcp.redisSelectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: redis
+        image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+        imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        ports:
+        - name: redis
+          containerPort: {{ .Values.redis.service.port }}
+          protocol: TCP
+        {{- if .Values.redis.auth.enabled }}
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "{{NAME}}-mcp.fullname" . }}-redis-secret
+              key: redis-password
+        command:
+        - redis-server
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        {{- end }}
+        livenessProbe:
+          tcpSocket:
+            port: redis
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            {{- if .Values.redis.auth.enabled }}
+            - -a
+            - $(REDIS_PASSWORD)
+            {{- end }}
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.redis.resources | nindent 10 }}
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        {{- if .Values.redis.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "{{NAME}}-mcp.fullname" . }}-redis-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "{{NAME}}-mcp.fullname" . }}-redis
+  labels:
+    {{- include "{{NAME}}-mcp.redisLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.redis.service.port }}
+    targetPort: redis
+    protocol: TCP
+    name: redis
+  selector:
+    {{- include "{{NAME}}-mcp.redisSelectorLabels" . | nindent 4 }}

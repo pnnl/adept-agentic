@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.git/
+.pytest_cache/
+.mypy_cache/
+*.log
+# Add other files/directories to ignore
+.env
+*.sqlite3 # If you have local test databases
+.ruff_cache/
+./data/*
+# Ignore Docker-related files
+Dockerfile
+docker-compose.yml
+docker-compose.override.yml

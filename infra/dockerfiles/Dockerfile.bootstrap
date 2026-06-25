@@ -1,0 +1,26 @@
+# infra/dockerfiles/Dockerfile.bootstrap
+# This Dockerfile creates an image with all necessary dependencies for running
+# one-off bootstrapping or setup tasks, such as database initialization or
+# Keycloak configuration. It inherits from the common deps-base image.
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+FROM ${DEPS_BASE_IMAGE}
+
+# USER appuser inherited from base image
+
+# Install any additional dependencies needed specifically for bootstrap tasks
+# Example: RUN . /app/.venv/bin/activate && uv pip install some-bootstrap-tool
+RUN . /app/.venv/bin/activate && uv pip install kubernetes
+
+# Copy src with ownership and executable permissions
+COPY --chown=appuser:appgroup --chmod=755 ./src/ /app/src/
+
+# Copy all scripts directories with ownership and executable permissions
+COPY --chown=appuser:appgroup --chmod=755 ./scripts/deps/ /app/scripts/deps/
+COPY --chown=appuser:appgroup --chmod=755 ./scripts/langfuse/ /app/scripts/langfuse/
+
+# Copy individual bootstrap scripts with ownership and executable permissions
+COPY --chown=appuser:appgroup --chmod=755 ./scripts/bootstrap_keycloak_api.py /app/scripts/bootstrap_keycloak_api.py
+# RAGflow integration disabled (FY26Q4) — script excluded from publish tree
+
+# Copy the new consolidated bootstrap scripts (redundant with scripts/deps/ copy, but explicit for clarity)
+COPY --chown=appuser:appgroup --chmod=755 ./scripts/deps/bootstrap_keycloak.py /app/scripts/deps/bootstrap_keycloak.py

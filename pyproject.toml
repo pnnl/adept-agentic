@@ -1,0 +1,195 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic_framework_pkg"
+version = "1.0.20260622"
+description = "ADEPT: A distributed agentic framework for scientific computing with MCP tool servers, LangGraph orchestration, and secure multi-tenant deployment."
+authors = [
+  { name = "Paul Rigor", email = "paul.rigor@pnnl.gov" },
+  { name = "August George", email = "august.george@pnnl.gov" },
+  { name = "Kai Dowd", email = "kaila.dowd@pnnl.gov" },
+  { name = "Niaz Chowdhury", email = "niazbahar.chowdhury@pnnl.gov" },
+]
+requires-python = ">=3.11,<3.12"
+
+# Include this to prevent the framework from being included in uv.lock
+# which should only freeze the dependencies, not including our package
+
+dependencies = [
+    # --- Security-critical: exact pins ---
+    "fastmcp==2.11.3",  # SECURITY: pinned exact. v3.0.0 has breaking changes (Session 62)
+    "litellm==1.85.0",  # SECURITY: pinned stable. Excludes supply chain attack (1.82.7/1.82.8) and SQLi CVE-2026-42208 (1.81.16-1.83.6)
+    "python-jose==3.5.0",
+    "python-keycloak==5.7.0",
+    "PyJWT==2.10.1",
+    "jwcrypto==1.5.6",
+    "cryptography==42.0.5",
+
+    # --- LangChain/LangGraph ecosystem: tight upper bounds ---
+    "langchain>=1.2.0,<2.0.0",
+    "langchain-core>=1.2.0,<2.0.0",
+    "langgraph>=1.0.5,<2.0.0",
+    "langchain-openai>=1.1.0,<2.0.0",
+    "langchain-community>=0.4.0,<1.0.0",
+    "langgraph-checkpoint>=3.0.1,<4.0.0",
+    "langgraph-checkpoint-redis==0.0.8",
+    "langgraph-checkpoint-postgres>=3.0.4,<4.0.0",
+
+    # --- MCP and protocol ---
+    "mcp>=1.13.0,<2.0.0",
+    "authlib>=1.6.0,<2.0.0",  # SECURITY: lower bound excludes CVE-2026-39108 (<1.5.2)
+    "ag-ui-protocol==0.1.14",
+    "a2a-sdk[sql]>=0.3.22,<0.4.0",
+
+    # --- LLM and AI ---
+    "openai>=2.37.0,<3.0.0",
+    "sentence-transformers==5.1.0",
+    "tiktoken==0.9.0",
+    "langfuse>=3.10.0,<4.0.0",
+
+    # --- AWS ---
+    "boto3>=1.41.0,<2.0.0",
+
+    # --- Web frameworks ---
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.34.0,<1.0.0",
+    "streamlit>=1.45.0,<2.0.0",
+    "streamlit-cookies-manager==0.2.0",
+
+    # --- Data and scientific ---
+    "numpy>=2.2.0,<3.0.0",
+    "pandas>=2.2.0,<3.0.0",
+    "pyarrow==21.0.0",
+    "faiss-cpu==1.11.0.post1",
+    "chromadb>=1.0.12,<2.0.0",
+    "biopython==1.85",
+    "rdkit-pypi==2022.9.5",  # PyPI version; use conda-forge rdkit for NumPy 2.x compat
+    #"pdbfixer",
+    "chembl_webresource_client==0.10.9",
+    "meeko==0.6.1",
+    #"vina",
+    "pubchempy==1.0.4",
+
+    # --- Database ---
+    "psycopg[binary,pool]>=3.2.9,<4.0.0",
+    "pgvector==0.4.2",
+    "redis>=5.3.0,<6.0.0",
+    "redisvl>=0.8.0,<1.0.0",
+    "aiosqlite==0.21.0",
+
+    # --- Document processing ---
+    "PyMuPDF>=1.26.0,<2.0.0",
+    "PyPDF2==3.0.1",
+    "openpyxl==3.1.5",
+    "python-docx==1.1.2",
+    "PyYAML>=6.0.2,<7.0.0",
+
+    # --- Web scraping and automation ---
+    "selenium==4.32.0",
+    "webdriver_manager==4.0.2",
+    "playwright==1.53.0",
+    "beautifulsoup4>=4.13.0,<5.0.0",
+    "lxml>=5.4.0,<6.0.0",
+    "httpx>=0.28.0,<1.0.0",
+
+    # --- Infrastructure and utilities ---
+    "python-dotenv==1.1.0",
+    "APScheduler==3.11.2",
+    "nest_asyncio==1.6.0",
+    "prompt-toolkit>=3.0.51,<4.0.0",
+    "watchdog>=6.0.0,<7.0.0",
+    "llm-sandbox[docker,k8s]==0.3.13",
+    "podman>=5.6.0,<6.0.0",
+    "gitxray==1.0.17.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.20.0",
+    "pytest-mock>=3.0.0",
+    "pytest-timeout>=2.3.1",
+    "requests>=2.31.0",
+    "black>=23.0.0",
+    "isort>=5.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "types-requests",
+    "types-redis",
+    "pip-audit>=2.5.0",
+    "jinja2",
+    "python-on-whales",
+    "pyflakes>=3.1.0",
+    "vulture>=2.11",
+    "psutil>=5.9.0",
+    "alembic>=1.13.0",
+]
+
+[project.scripts]
+run-mcp-server = "agentic_framework_pkg.mcp_server.main:start_server_cli"
+run-mcp-hpc-server = "agentic_framework_pkg.hpc_mcp_server.main:start_hpc_server_cli"
+run-sandbox-server = "agentic_framework_pkg.sandbox_mcp_server.main:start_sandbox_server_cli"
+run-streamlit-harness = "agentic_framework_pkg.streamlit_app.main:start_harness_cli"
+run-agent-gateway = "agentic_framework_pkg.agent_gateway.main:start_agent_gateway"
+
+[tool.uv.sources]
+agentic-framework-pkg = { path = "src/agentic_framework_pkg", editable = true }
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311" # Align with project's requires-python
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors (existing)
+    "F",    # pyflakes: unused imports, variables, dead assignments
+    "W",    # pycodestyle warnings
+    "B",    # flake8-bugbear: common bug patterns
+    "C4",   # flake8-comprehensions: unnecessary list/dict/set calls
+    "UP",   # pyupgrade: deprecated syntax for Python 3.11+
+    "SIM",  # flake8-simplify: dead branches, redundant conditions
+]
+ignore = [
+    "E501",   # line too long (Black handles formatting)
+    "E402",   # module-import-not-at-top (conditional imports in __init__.py)
+    "W293",   # blank-line-with-whitespace (auto-fixable, defer to formatting sprint)
+    "W291",   # trailing-whitespace (auto-fixable, defer to formatting sprint)
+    "W292",   # missing-newline-at-end-of-file (auto-fixable, defer to formatting sprint)
+    "B008",   # function call in default argument (FastAPI Depends pattern)
+    "B904",   # raise ... from err (too noisy for existing codebase)
+    "F401",   # unused import — suppressed globally (too noisy for re-exports in __init__.py)
+    "F841",   # unused variable — advisory only (vulture covers this better)
+    "UP006",  # non-pep585-annotation (use list[] not List[] — defer to modernization sprint)
+    "UP007",  # non-pep604-annotation-union (X | Y not Union[X, Y] — defer)
+    "UP035",  # deprecated-import (typing.List etc — defer to modernization sprint)
+    "UP045",  # non-pep604-annotation-optional (X | None not Optional[X] — defer)
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+timeout = 300
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "unit: marks tests as unit tests",
+    "e2e: marks tests as end-to-end tests",
+    "slow: marks tests as slow running",
+]

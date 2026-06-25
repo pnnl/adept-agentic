@@ -1,0 +1,45 @@
+# values-gcp.yaml
+# Overrides for deploying the agentic-framework to Google Kubernetes Engine (GKE).
+
+global:
+  image:
+    # The repositoryPrefix will be set by the CI/CD pipeline, e.g., "your-region-docker.pkg.dev/your-project/agentic-framework-repo/"
+    pullPolicy: Always
+
+# Secrets should be managed via Google Secret Manager and the CSI Secrets Store Driver
+secrets:
+  create: false
+  existingSecretName: "agentic-framework-secrets" # The name of the K8s secret created by the CSI driver
+  csi:
+    provider: "gcp"
+    parameters:
+      secrets: |
+        - resourceName: "projects/your-gcp-project-id/secrets/agentic-framework-secrets/versions/latest"
+          fileName: "agentic-framework-secrets.json"
+    secretObjects:
+      - key: "OPENAI_API_KEY"
+        objectName: "OPENAI_API_KEY"
+      - key: "POSTGRES_PASSWORD"
+        objectName: "POSTGRES_PASSWORD"
+      - key: "KEYCLOAK_ADMIN_PASSWORD"
+        objectName: "KEYCLOAK_ADMIN_PASSWORD" # The name of the K8s secret created by the CSI driver
+
+# Persistence configuration for GCP
+persistence:
+  data:
+    storageClassName: "standard" # Standard GCE persistent disk
+  shared_uploads:
+    storageClassName: "standard"
+  blast_databases:
+    storageClassName: "standard"
+
+postgres:
+  persistence:
+    storageClassName: "standard"
+
+# Ingress configuration for GCP with GKE Ingress
+ingress:
+  enabled: true
+  className: "gce" # Default GKE Ingress controller
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: "agentic-framework-static-ip" # Example: requires a pre-provisioned static IP

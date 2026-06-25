@@ -1,0 +1,20 @@
+{{- if .Values.gateway_registry.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-gateway-registry
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway-registry
+spec:
+  type: {{ .Values.gateway_registry.service.type }}
+  ports:
+    - port: {{ .Values.gateway_registry.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "agentic-framework.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway-registry
+{{- end }}

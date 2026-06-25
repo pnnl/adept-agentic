@@ -1,0 +1,29 @@
+# infra/dockerfiles/Dockerfile.tests
+# This Dockerfile creates a consistent environment for running e2e tests.
+
+# Use the same base image as our other services to ensure dependency parity.
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+FROM ${DEPS_BASE_IMAGE}
+
+# USER appuser inherited from base image - all operations run as appuser
+
+WORKDIR /app
+
+# Copy dependency definitions with explicit ownership (already in base, but explicit here)
+COPY --chown=appuser:appgroup pyproject.toml uv.lock* ./
+
+# Install test-specific dependencies using uv (runs as appuser)
+RUN pip install uv && \
+    uv pip install --system "pytest" "requests" "prompt-toolkit"
+
+# Copy the entire project context with explicit ownership
+# This ensures that the test runner has access to all source code and test files.
+COPY --chown=appuser:appgroup . .
+
+# No chown needed - all files created as appuser from the start!
+
+# Set the python path so that imports from 'src' work correctly
+ENV PYTHONPATH=/app/src
+
+# The default command is to run pytest on the e2e test directory.
+CMD ["pytest", "tests/e2e"]

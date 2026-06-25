@@ -1,0 +1,4 @@
+# Python plotting libraries for sandbox
+# Pinned to exact versions for supply chain security (#104)
+seaborn==0.13.2
+gplot==3.0

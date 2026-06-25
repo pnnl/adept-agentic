@@ -1,0 +1,11 @@
+---
+# Main task file for cloud_auth role
+# Routes to cloud-specific authentication based on deployment target
+
+- name: "Authenticate to {{ deployment.cloud_provider | upper }}"
+  include_tasks: "{{ deployment.cloud_provider }}.yml"
+  when: deployment.cloud_provider in ['aws', 'azure', 'gcp']
+
+- name: Verify authentication success
+  debug:
+    msg: "Successfully authenticated to {{ deployment.cloud_provider | upper }}"

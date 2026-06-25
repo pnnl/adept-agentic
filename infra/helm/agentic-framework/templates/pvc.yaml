@@ -1,0 +1,54 @@
+{{- if .Values.persistence.data.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-data
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.data.accessMode }}
+  {{- if .Values.persistence.data.storageClassName }}
+  storageClassName: {{ .Values.persistence.data.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.data.size }}
+---
+{{- end }}
+{{- if .Values.persistence.shared_uploads.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-shared-uploads
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.shared_uploads.accessMode }}
+  {{- if .Values.persistence.shared_uploads.storageClassName }}
+  storageClassName: {{ .Values.persistence.shared_uploads.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.shared_uploads.size }}
+---
+{{- end }}
+{{- if and .Values.hpc_mcp_server.enabled .Values.persistence.blast_databases.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-blast-databases
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.blast_databases.accessMode }}
+  {{- if .Values.persistence.blast_databases.storageClassName }}
+  storageClassName: {{ .Values.persistence.blast_databases.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.blast_databases.size }}
+{{- end }}
+

@@ -1,0 +1,28 @@
+{
+  "name": "example_weather_fetcher",
+  "description": "Fetches current weather conditions for a specified city using an external API.",
+  "args_schema": {
+    "city": {
+      "type": "string",
+      "description": "The name of the city to get weather for."
+    },
+    "unit": {
+      "type": "string",
+      "description": "Temperature unit (e.g., 'celsius', 'fahrenheit'). Defaults to 'celsius'.",
+      "default": "celsius"
+    }
+  },
+  "invocation": {
+    "protocol": "http",
+    "connection": {
+      "url": "https://api.example.com/weather/current",
+      "method": "GET",
+      "headers": {
+        "X-API-Key": "YOUR_EXTERNAL_WEATHER_API_KEY"
+      }
+    }
+  },
+  "acl": {
+    "global": true
+  }
+}

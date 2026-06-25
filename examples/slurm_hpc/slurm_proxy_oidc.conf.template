@@ -1,0 +1,72 @@
+# Nginx reverse proxy for Slurm MCP server — OIDC-enabled version
+# Validates JWT tokens via oauth2_proxy before proxying to MCP server
+# Use with: docker compose --profile oidc up
+
+server {
+    listen 80;
+    server_name _;
+
+    # Health check endpoint (unrestricted)
+    location /health {
+        access_log off;
+        return 200 '{"status":"ok"}';
+        add_header Content-Type application/json;
+    }
+
+    # oauth2_proxy auth endpoint (internal only)
+    location = /oauth2/auth {
+        internal;
+        proxy_pass http://slurm_oauth2_proxy:4180/oauth2/auth;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # oauth2_proxy sign-in redirect
+    location /oauth2/ {
+        proxy_pass http://slurm_oauth2_proxy:4180;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # MCP endpoint (OIDC-protected)
+    location /mcp {
+        # Validate token via oauth2_proxy
+        auth_request /oauth2/auth;
+        auth_request_set $auth_user $upstream_http_x_auth_request_user;
+        auth_request_set $auth_groups $upstream_http_x_auth_request_groups;
+        auth_request_set $auth_email $upstream_http_x_auth_request_email;
+        auth_request_set $auth_token $upstream_http_x_auth_request_access_token;
+
+        # Forward validated identity to MCP server
+        proxy_set_header X-Auth-User $auth_user;
+        proxy_set_header X-Auth-Groups $auth_groups;
+        proxy_set_header X-Auth-Email $auth_email;
+
+        # Proxy to MCP server
+        proxy_pass http://${MCP_SERVER_HOST}:${MCP_SERVER_PORT}/mcp;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # HTTP/1.1 for chunked transfer encoding (MCP SSE transport)
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_request_buffering off;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        proxy_buffering off;
+        client_max_body_size 50M;
+    }
+
+    # Catch-all
+    location / {
+        return 404 '{"error": "Not Found", "detail": "Use /mcp or /health endpoints"}';
+        add_header Content-Type application/json;
+    }
+}

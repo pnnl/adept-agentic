@@ -1,0 +1,37 @@
+---
+# GCP authentication tasks
+# Authenticates to GCP using service account
+
+- name: Write GCP credentials to temporary file
+  copy:
+    content: "{{ credentials.gcp.credentials_json }}"
+    dest: "/tmp/gcp-credentials-{{ deployment.name }}.json"
+    mode: 0600
+  no_log: true
+  changed_when: false
+
+- name: Authenticate to GCP with service account
+  command: >
+    gcloud auth activate-service-account
+    --key-file=/tmp/gcp-credentials-{{ deployment.name }}.json
+  register: gcp_auth
+  changed_when: false
+
+- name: Set GCP project
+  command: gcloud config set project {{ credentials.gcp.project_id }}
+  changed_when: false
+
+- name: Verify GCP authentication
+  command: gcloud auth list --format=json
+  register: gcp_account
+  changed_when: false
+
+- name: Display GCP account info
+  debug:
+    msg: "Authenticated to GCP project {{ credentials.gcp.project_id }} in region {{ credentials.gcp.region }}"
+
+- name: Remove temporary GCP credentials file
+  file:
+    path: "/tmp/gcp-credentials-{{ deployment.name }}.json"
+    state: absent
+  changed_when: false

@@ -1,0 +1,11 @@
+.env
+logs/
+*.log
+certs/*.key
+certs/*.crt
+certs/*.csr
+certs/*.srl
+certs/*.ext
+ssh_keys/
+config/e2e_credentials.json
+scripts/tool_registry.json

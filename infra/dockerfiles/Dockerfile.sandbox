@@ -1,0 +1,132 @@
+# infra/dockerfiles/Dockerfile.sandbox
+
+# Global ARGs (must be declared before first FROM for multi-stage builds)
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+
+# --- Stage 1: Compile nsjail from source ---
+# Must match the base image distro (Ubuntu 22.04) for shared library compatibility
+FROM ubuntu:22.04 AS nsjail-builder
+ARG NSJAIL_VERSION=3.4
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates make gcc g++ \
+    protobuf-compiler libprotobuf-dev \
+    libnl-route-3-dev libnl-3-dev \
+    pkg-config bison flex \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch ${NSJAIL_VERSION} \
+    https://github.com/google/nsjail.git /build/nsjail && \
+    cd /build/nsjail && make -j$(nproc) && \
+    strip /build/nsjail/nsjail
+
+# --- Stage 2: Main sandbox image ---
+FROM ${DEPS_BASE_IMAGE}
+
+# Base image has USER appuser, but we need root for apt-get and entrypoint setup
+USER root
+
+# 1. Install gosu for privilege dropping in the entrypoint script and other system packages
+RUN apt-get update && apt-get install -y gosu \
+    nftables \
+    libsbml5 libsbml5-dev \
+    glpk-utils \
+    libglpk-dev \
+    openjdk-11-jdk-headless \
+    ffmpeg \
+    libxrender1 \
+    libopenbabel-dev openbabel python3-openbabel \
+    # Chromium/Chrome shared library deps required by kaleido v1.x (choreographer)
+    libnss3 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 \
+    libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libpango-1.0-0 libcairo2 libasound2 \
+    fonts-liberation libappindicator3-1 xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome (real binary, not snap stub like chromium-browser)
+RUN curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb && \
+    apt-get update && apt-get install -y /tmp/chrome.deb && \
+    rm /tmp/chrome.deb && rm -rf /var/lib/apt/lists/*
+
+    # Set JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+# Kaleido/Chromium for plotly static image export
+ENV CHROME_PATH=/usr/bin/google-chrome-stable
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-gpu"
+
+# 1b. Install nsjail binary from builder stage + runtime dependency (libnl-route)
+COPY --from=nsjail-builder /build/nsjail/nsjail /usr/local/bin/nsjail
+RUN chmod 755 /usr/local/bin/nsjail && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libnl-route-3-200 libprotobuf23 && \
+    rm -rf /var/lib/apt/lists/*
+
+# 1c. Install nsjail configuration (seccomp policy + sandbox config)
+COPY --chown=root:root config/nsjail/sandbox.cfg /etc/nsjail/sandbox.cfg
+COPY --chown=root:root config/nsjail/seccomp_scientific.policy /etc/nsjail/seccomp_scientific.policy
+RUN chmod 644 /etc/nsjail/sandbox.cfg /etc/nsjail/seccomp_scientific.policy
+
+# 2. Copy and prepare the entrypoint script and extra-files artifacts (as root)
+COPY --chown=root:root scripts/sandbox-entrypoint.sh /usr/local/bin/sandbox-entrypoint.sh
+COPY --chown=root:root infra/dockerfiles/extra-files/requirements-cobrapy.txt /app/requirements-cobrapy.txt
+COPY --chown=root:root infra/dockerfiles/extra-files/requirements-python-plotting.txt /app/requirements-python-plotting.txt
+COPY --chown=root:root infra/dockerfiles/extra-files/requirements-scientific-viz.txt /app/requirements-scientific-viz.txt
+COPY --chown=root:root infra/dockerfiles/extra-files/requirements-document-parsers.txt /app/requirements-document-parsers.txt
+COPY --chown=root:root infra/dockerfiles/extra-files/conda-env-chem.yml /app/conda-env-chem.yml
+RUN chmod +x /usr/local/bin/sandbox-entrypoint.sh
+RUN chmod a+r /app/requirements-cobrapy.txt
+RUN chmod a+r /app/requirements-python-plotting.txt
+RUN chmod a+r /app/requirements-scientific-viz.txt
+RUN chmod a+r /app/requirements-document-parsers.txt
+RUN chmod a+r /app/conda-env-chem.yml
+
+# 3. Install Miniconda and create the conda chemistry environment
+#    RDKit, Open Babel, MDAnalysis require conda-forge builds for NumPy 2.x compat.
+#    See: docs/implementation-plans/SANDBOX_SCIENTIFIC_VISUALIZATION_UPGRADE_PLAN.md
+#    Pinned to 25.1.1: conda 26.x has sqlite3.OperationalError in shards_cache.py
+#    under Docker overlay2 (concurrent thread access during pipelined channel fetch).
+ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=true
+RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-py312_25.1.1-2-Linux-x86_64.sh -o /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh && \
+    /opt/conda/bin/conda config --system --set auto_activate_base false && \
+    /opt/conda/bin/conda config --system --add channels conda-forge && \
+    /opt/conda/bin/conda env create -f /app/conda-env-chem.yml && \
+    /opt/conda/bin/conda clean -afy && \
+    ln -s /opt/conda/envs/chem/bin/python /usr/local/bin/python-chem && \
+    chmod -R a+rX /opt/conda
+ENV CONDA_CHEM_PYTHON=/opt/conda/envs/chem/bin/python
+
+# Switch to appuser BEFORE copying code
+USER appuser
+
+# 4. Copy the source code with explicit ownership
+COPY --chown=appuser:appgroup src/ ./src/
+
+# 5. Perform the editable install + extra pip requirements (runs as appuser)
+RUN uv pip install --no-cache-dir --editable .
+RUN uv pip install --no-cache-dir -r /app/requirements-cobrapy.txt
+RUN uv pip install --no-cache-dir -r /app/requirements-python-plotting.txt
+RUN uv pip install --no-cache-dir -r /app/requirements-scientific-viz.txt
+RUN uv pip install --no-cache-dir -r /app/requirements-document-parsers.txt
+
+# NOTE: rdkit-pypi on PyPI maxes at 2022.9.5 (NumPy 1.x only). For working RDKit,
+# use the conda chem environment via: /opt/conda/envs/chem/bin/python
+# or the symlink: /usr/local/bin/python-chem
+
+# No chown needed - all files created as appuser from the start!
+# NOTE: Runtime volume permissions will be handled by entrypoint script
+
+# Create symlinks for llm-sandbox compatibility
+# llm-sandbox expects Python at /sandbox/.sandbox-venv/bin/python
+# We need to symlink the entire venv structure so Python can find the packages
+USER root
+RUN mkdir -p /sandbox && \
+    ln -s /app/.venv /sandbox/.sandbox-venv && \
+    chmod -R 755 /sandbox
+USER appuser
+
+# 6. Define the runtime command with entrypoint
+# Note: Entrypoint runs as root and handles privilege dropping
+# IMPORTANT: Use pre-built venv explicitly for consistency
+EXPOSE 8082
+ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint.sh"]
+CMD ["/app/.venv/bin/python", "-m", "agentic_framework_pkg.sandbox_mcp_server.main"]

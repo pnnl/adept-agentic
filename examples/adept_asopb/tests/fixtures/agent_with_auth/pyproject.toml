@@ -1,0 +1,9 @@
+[project]
+name = "agent-with-auth"
+version = "0.1.0"
+dependencies = [
+    "pydantic>=2.0",
+    "langchain>=0.1.0",
+    "PyJWT>=2.8.0",
+    "requests>=2.31.0",
+]

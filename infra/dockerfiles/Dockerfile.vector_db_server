@@ -1,0 +1,17 @@
+# infra/dockerfiles/azure/Dockerfile.vector_db_server
+# This Dockerfile internalizes the public ChromaDB image and pre-warms the default embedding model.
+FROM chromadb/chroma:latest
+
+# Install python and pip for the pre-warming script and curl for the healthcheck
+RUN apt-get update && apt-get install -y python3 python3-pip curl --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+# Install the full chromadb library which includes the server components needed for the pre-warming script.
+RUN pip3 install --break-system-packages chromadb
+
+# Copy the pre-warming script into the container
+COPY infra/dockerfiles/prewarm_chroma.py /app/prewarm_chroma.py
+
+# Run the script to download and cache the model. This creates a new layer in the image.
+RUN python3 /app/prewarm_chroma.py
+
+# The original entrypoint and command of the base image will be used when the container starts.

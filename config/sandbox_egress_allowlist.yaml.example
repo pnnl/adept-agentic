@@ -1,0 +1,80 @@
+# Sandbox Egress Allowlist Configuration
+#
+# Controls which external hosts sandbox containers can reach.
+# Copy this file to config/sandbox_egress_allowlist.yaml and customize.
+#
+# Behavior:
+#   - No config file present: All external egress denied (default)
+#   - Valid config with rules: Only listed host:port pairs reachable
+#   - Invalid config (parse error): All external egress denied (fail-closed)
+#   - Internal services (same Docker network): Always reachable regardless of config
+#
+# Enforcement: nftables rules applied during container initialization.
+# Validation: Pydantic schema rejects wildcards, CIDR notation, and localhost targets.
+#
+# Environment variable:
+#   SANDBOX_EGRESS_ENABLED=true   (default, applies nftables rules)
+#   SANDBOX_EGRESS_ENABLED=false  (development mode, no rules applied)
+
+version: 1
+
+# Allowlist rules — each entry allows egress to a specific host:port.
+# Maximum 50 rules. host, protocol, and comment are required.
+#
+# Fields:
+#   host:     FQDN or IPv4 address (no wildcards, no CIDR, no localhost)
+#   port:     1-65535, or omit to allow ALL ports on that host
+#   protocol: tcp (default) or udp
+#   comment:  Operator justification (required, non-empty)
+rules: []
+
+# --- Examples (uncomment as needed) ---
+#
+#  # Allow PyPI for pip install during code execution
+#  - host: pypi.org
+#    port: 443
+#    protocol: tcp
+#    comment: "Python Package Index — required for pip install in sandbox"
+#
+#  - host: files.pythonhosted.org
+#    port: 443
+#    protocol: tcp
+#    comment: "PyPI file hosting — package downloads"
+#
+#  # Allow conda-forge
+#  - host: conda.anaconda.org
+#    port: 443
+#    protocol: tcp
+#    comment: "Conda package repository"
+#
+#  # Allow specific API endpoint for scientific workflows
+#  - host: api.uniprot.org
+#    port: 443
+#    protocol: tcp
+#    comment: "UniProt REST API for protein data retrieval"
+#
+#  # Allow HPC license server (specific port)
+#  - host: gurobi.example.com
+#    port: 27000
+#    protocol: tcp
+#    comment: "Gurobi optimization license server"
+#
+#  # Allow all TCP ports to a license server (omit port field)
+#  - host: license-server.example.com
+#    protocol: tcp
+#    comment: "License server — all TCP ports (token server uses dynamic ports)"
+#
+# --- What is always allowed (built into nftables rules) ---
+#
+#  - Loopback (container-internal)
+#  - Established/related connections (responses to inbound MCP requests)
+#  - DNS (UDP/TCP port 53)
+#  - Docker internal networks (172.16.0.0/12, 10.0.0.0/8, 192.168.0.0/16)
+#
+# --- What is always blocked ---
+#
+#  - Cloud metadata endpoints (169.254.169.254)
+#  - Anything not in the rules list above
+#  - Wildcards (*.example.com) — rejected at config validation
+#  - CIDR ranges (10.0.0.0/8) — rejected at config validation
+#  - Localhost/loopback targets — rejected at config validation

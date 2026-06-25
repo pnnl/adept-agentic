@@ -1,0 +1,94 @@
+# values-local-k8s.yaml
+# Helm values for deploying to a local Kubernetes cluster (e.g., Docker Desktop, Minikube).
+
+namespace: agentic-framework
+
+replicaCount: 1
+
+# Global values inherited by all services
+global:
+  image:
+    # Use 'Never' or 'IfNotPresent' to force Kubernetes to use locally built images
+    # that have been loaded into the cluster.
+    pullPolicy: Never
+    tag: "latest"
+  proxy: {}
+
+# No image pull secrets are needed for local images.
+imagePullSecrets: []
+
+# Use a pre-existing secret created from the local .env file.
+# The manage-local-k8s.sh script handles the creation of this secret.
+secrets:
+  create: false
+  existingSecretName: "my-app-env-secret"
+
+# --- Service-specific image configurations ---
+mcp_server:
+  enabled: true
+  image:
+    repository: agentic-framework-mcp-server
+
+streamlit_app_v2:
+  enabled: true
+  image:
+    repository: agentic-framework-streamlit-app-v2
+
+hpc_mcp_server:
+  enabled: true
+  image:
+    repository: agentic-framework-hpc-mcp-server
+
+sandbox_mcp_server:
+  enabled: true
+  image:
+    repository: agentic-framework-sandbox-mcp-server
+  # CRITICAL: Use the 'kubernetes' backend for parity with production.
+  backend: "kubernetes"
+  # NetworkPolicy disabled for local dev — Docker Desktop/Kind CNIs typically don't enforce it.
+  networkPolicy:
+    enabled: false
+
+agent_gateway:
+  enabled: true
+  image:
+    repository: agentic-framework-agent-gateway
+
+# --- Third-Party Service Configurations ---
+keycloak:
+  enabled: true
+  image:
+    repository: agentic-framework-keycloak
+
+postgres:
+  enabled: true
+  image:
+    repository: agentic-framework-postgres
+  persistence:
+    # Use the default storage class provided by the local K8s cluster.
+    storageClassName: ""
+
+# --- Ingress Configuration ---
+# Disabled by default for local development. Use `kubectl port-forward` instead.
+ingress:
+  enabled: false
+
+# --- Persistence Configuration ---
+# Use the default storage class provided by the local K8s cluster by leaving
+# storageClassName empty.
+persistence:
+  data:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+  shared_uploads:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+  blast_databases:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi

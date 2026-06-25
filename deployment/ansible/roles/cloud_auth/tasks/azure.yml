@@ -1,0 +1,26 @@
+---
+# Azure authentication tasks
+# Authenticates to Azure using service principal
+
+- name: Azure CLI login with service principal
+  command: >
+    az login --service-principal
+    --username {{ credentials.azure.client_id }}
+    --password {{ credentials.azure.client_secret }}
+    --tenant {{ credentials.azure.tenant_id }}
+  no_log: true
+  register: azure_login
+  changed_when: false
+
+- name: Set Azure subscription
+  command: az account set --subscription {{ credentials.azure.subscription_id }}
+  changed_when: false
+
+- name: Verify Azure authentication
+  command: az account show --output json
+  register: azure_account
+  changed_when: false
+
+- name: Display Azure account info
+  debug:
+    msg: "Authenticated to Azure subscription {{ (azure_account.stdout | from_json).name }} ({{ (azure_account.stdout | from_json).id }})"

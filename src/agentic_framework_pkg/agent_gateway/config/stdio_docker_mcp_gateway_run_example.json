@@ -1,0 +1,27 @@
+{
+  "name": "invoke_mcp_gateway_tool",
+  "description": "A universal adapter tool that can invoke ANY other tool available to the 'docker mcp gateway run' command. Use this to run tools by providing the target tool's name and its specific arguments.",
+  "args_schema": {
+    "mcp_tool_name": {
+      "type": "string",
+      "description": "The exact name of the target tool you want to run via the gateway (e.g., 'get_system_information')."
+    },
+    "mcp_tool_args": {
+      "type": "object",
+      "description": "A JSON object containing all the arguments required by the target tool."
+    }
+  },
+  "invocation": {
+    "protocol": "stdio",
+    "connection": {
+      "command": [
+        "python3",
+        "agentic_framework_pkg/agent_gateway/tools/gateway_run_adapter.py"
+      ],
+      "working_directory": "/app"
+    }
+  },
+  "acl": {
+    "global": true
+  }
+}

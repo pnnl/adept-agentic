@@ -1,0 +1,155 @@
+# ADEPT LLM Provider and Purpose Configuration
+#
+# Copy to config/llm.yaml and customize for your deployment.
+# IMPORTANT: config/llm.yaml is gitignored — never commit credentials.
+#
+# Credentials can be specified two ways:
+#   1. Inline values:   api_key: "sk-abc123..."     (convenient for dev, gitignored)
+#   2. Env var refs:    api_key_env: AZURE_API_KEY   (resolved at runtime from env/secrets)
+# If both are set for the same credential, the inline value wins.
+#
+# PRECEDENCE: When this file exists and LLM_CONFIG_PATH is set, it is the
+# primary source of truth for model/purpose configuration. Env vars
+# (DEFAULT_LLM_MODEL, CODING_AGENT_DEFAULT_MODEL, etc.) are IGNORED for
+# model selection. Env vars are still used for credential resolution via
+# *_env references.
+#
+# KNOWN OVERRIDE: LANGCHAIN_LLM_MODEL, if set, still takes precedence for
+# the ScientificWorkflowAgent path regardless of YAML mode.
+#
+# RELATIONSHIP TO model_catalog.yaml:
+#   - model_catalog.yaml: lightweight purpose/alias catalog (no secrets, committed)
+#   - llm.yaml: deployment-specific config with credentials and provider endpoints
+#   - llm.yaml is independent of model_catalog.yaml. Both are loaded separately
+#     by LLMAgnosticClient. Role aliases in llm.yaml take highest priority when
+#     both define the same alias.
+#
+# Activation: set LLM_CONFIG_PATH env var (no default — strictly opt-in)
+
+defaults:
+  provider: bedrock
+  model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+  temperature: 0.0
+  retry:
+    max_retries: 10
+    initial_delay_seconds: 1.0
+    max_delay_seconds: 60.0
+    backoff_multiplier: 2.0
+
+providers:
+  bedrock:
+    aws_region: us-west-2
+    credentials:
+      aws_access_key_id_env: AWS_ACCESS_KEY_ID
+      aws_secret_access_key_env: AWS_SECRET_ACCESS_KEY
+      # Or inline values (for dev — never commit these):
+      # aws_access_key_id: "AKIA..."
+      # aws_secret_access_key: "wJalr..."
+
+  azure:
+    api_version: "2024-12-01-preview"
+    credentials:
+      api_key_env: AZURE_API_KEY
+      api_base_env: AZURE_API_BASE
+
+  openai:
+    credentials:
+      api_key_env: OPENAI_API_KEY
+
+  ollama:
+    api_base: "http://localhost:11434"
+
+  anthropic:
+    credentials:
+      api_key_env: ANTHROPIC_API_KEY
+
+purposes:
+  agent_main:
+    description: "Primary agent for reasoning and conversation"
+    # Inherits defaults (bedrock + claude-sonnet-4-5)
+
+  agent_supervisor:
+    description: "Multi-agent session supervisor"
+    # Inherits defaults
+
+  agent_planner:
+    description: "Multi-agent task planner"
+    # Inherits defaults
+
+  coding_agent:
+    model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    description: "Code generation, debugging, and security reviews"
+    # Optional purpose-specific credentials override:
+    # credentials:
+    #   aws_access_key_id_env: CODING_AGENT_AWS_ACCESS_KEY_ID
+    #   aws_secret_access_key_env: CODING_AGENT_AWS_SECRET_ACCESS_KEY
+    # aws_region: us-east-1
+
+  rag:
+    model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    description: "RAG query generation (CSV, PDF, knowledge base)"
+
+  streamlit:
+    model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    description: "Streamlit UI interactions"
+
+  session_summary:
+    model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    description: "Session summary generation"
+
+  embedding:
+    provider: azure
+    model: text-embedding-3-large
+    description: "Text embeddings (Azure-only — no Bedrock equivalent via same API)"
+    api_version: "2023-05-15"
+    credentials:
+      api_key_env: EMBEDDING_AZURE_API_KEY
+      api_base_env: EMBEDDING_AZURE_API_BASE
+
+  generic:
+    description: "General fallback purpose"
+    # Inherits defaults
+
+  # Domain-specific purposes (extend as needed)
+  biology_agent:
+    description: "Biological data analysis, protein structure, genomics"
+    # Inherits defaults
+
+  chemistry_agent:
+    description: "Chemical analysis, reaction prediction, molecular design"
+    # Inherits defaults
+
+  data_scientist:
+    description: "Statistical analysis, ML pipelines, data visualization"
+    # Inherits defaults
+
+  hpc_agent:
+    description: "HPC job management, Slurm scripts, batch scheduling"
+    # Inherits defaults
+
+fallback:
+  provider: bedrock
+  model: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+role_aliases:
+  # Coding
+  coder: coding_agent
+  developer: coding_agent
+  programmer: coding_agent
+  python_developer: coding_agent
+  software_engineer: coding_agent
+  # Biology
+  biologist: biology_agent
+  genomics_researcher: biology_agent
+  protein_analyst: biology_agent
+  bioinformatician: biology_agent
+  # Chemistry
+  chemist: chemistry_agent
+  materials_scientist: chemistry_agent
+  # Data science
+  data_scientist: data_scientist
+  statistician: data_scientist
+  ml_engineer: data_scientist
+  # HPC
+  hpc_engineer: hpc_agent
+  slurm_admin: hpc_agent

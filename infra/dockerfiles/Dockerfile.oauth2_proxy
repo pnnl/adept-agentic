@@ -1,0 +1,17 @@
+# infra/dockerfiles/Dockerfile.oauth2_proxy
+# Internalized oauth2-proxy image following ADEPT 3rd-party service pattern
+# Base image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+#
+# Session: JupyterLab Keycloak SSO Integration (2025-01-25)
+# Purpose: Pre-build oauth2-proxy image to avoid build-time delays during stack startup
+# Pattern: Follows same internalization approach as Keycloak, PostgreSQL, Nginx
+
+FROM quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+
+# Labels for image metadata
+LABEL maintainer="ADEPT Framework <adept@pnnl.gov>"
+LABEL description="Internalized oauth2-proxy for JupyterLab Keycloak SSO"
+LABEL version="7.6.0"
+
+# No additional customizations needed for oauth2-proxy
+# The official image is sufficient for ADEPT requirements

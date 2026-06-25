@@ -1,0 +1,66 @@
+# Requirements for ADEPT Examples
+#
+# This file contains dependencies for standalone example scripts.
+# These examples work WITHOUT installing the ADEPT framework library.
+#
+# Installation:
+#   pip install -r examples/requirements.txt
+#
+# Or create a virtual environment:
+#   python3 -m venv venv
+#   source venv/bin.sh  # On Windows: venv\Scripts\activate
+#   pip install -r examples/requirements.txt
+
+# =============================================================================
+# CORE DEPENDENCIES
+# =============================================================================
+
+# OpenAI-compatible client (required for all OpenAI examples)
+openai>=1.12.0
+
+# HTTP client for authentication examples
+httpx>=0.27.0
+
+# =============================================================================
+# LANGGRAPH EXAMPLES
+# =============================================================================
+
+# LangGraph for multi-agent workflows
+langgraph>=0.0.20
+
+# LangChain core for message handling
+langchain-core>=0.1.20
+
+# LiteLLM for unified LLM client interface
+litellm>=1.30.0,!=1.82.7,!=1.82.8  # SECURITY: compromised versions (March 2026 supply chain attack)
+
+# =============================================================================
+# OPTIONAL DEPENDENCIES
+# =============================================================================
+
+# For Jupyter notebook examples (if running .ipynb files)
+# jupyter>=1.0.0
+# ipykernel>=6.20.0
+
+# For async examples with PostgreSQL session tracking (advanced)
+# asyncpg>=0.29.0
+# sqlalchemy>=2.0.0
+
+# =============================================================================
+# NOTES
+# =============================================================================
+#
+# 1. All examples in this directory are designed to work STANDALONE
+#    without requiring the full ADEPT framework installation.
+#
+# 2. Session tracking features (create_adept_session) are optional
+#    and gracefully degrade if ADEPT libraries are not available.
+#
+# 3. For development within the ADEPT framework, use the main
+#    project dependencies instead: pip install -e .
+#
+# 4. OpenAI client examples (openai_client_service_token_example.py)
+#    only require: openai, httpx
+#
+# 5. LangGraph examples (langgraph_adept_*.py) require:
+#    openai, httpx, langgraph, langchain-core, litellm

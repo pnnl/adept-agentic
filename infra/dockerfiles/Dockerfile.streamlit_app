@@ -1,0 +1,19 @@
+# infra/dockerfiles/Dockerfile.streamlit_app
+ARG DEPS_BASE_IMAGE=agentic-framework-deps-base:latest
+FROM ${DEPS_BASE_IMAGE}
+
+# USER appuser inherited from base image - all operations run as appuser
+
+# 1. Copy the source code with explicit ownership
+COPY --chown=appuser:appgroup src/ ./src/
+
+# 2. Perform the editable install (runs as appuser)
+RUN uv pip install --no-cache-dir --editable .
+
+# No chown needed - all files created as appuser from the start!
+
+# 3. Define the runtime command
+EXPOSE 8501
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+
+CMD ["uv", "run", "run-streamlit-harness"]

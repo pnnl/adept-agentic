@@ -1,0 +1,58 @@
+# values-aws.yaml
+# Overrides for deploying the agentic-framework to AWS EKS.
+
+global:
+  image:
+    # The repositoryPrefix will be set by the CI/CD pipeline, e.g., "youraccount.dkr.ecr.yourregion.amazonaws.com/agentic-framework/"
+    pullPolicy: Always
+
+# Secrets should be managed via AWS Secrets Manager and the CSI Secrets Store Driver
+secrets:
+  create: false
+  existingSecretName: "agentic-framework-secrets"
+  csi:
+    provider: "aws"
+    parameters:
+      objects: |
+        - objectName: "arn:aws:secretsmanager:us-west-2:123456789012:secret:agentic-framework-secrets-AbCdEf"
+          objectType: "secretsmanager"
+    secretObjects:
+      - key: "OPENAI_API_KEY"
+        objectName: "OPENAI_API_KEY"
+      - key: "POSTGRES_PASSWORD"
+        objectName: "POSTGRES_PASSWORD"
+      - key: "KEYCLOAK_ADMIN_PASSWORD"
+        objectName: "KEYCLOAK_ADMIN_PASSWORD" # The name of the K8s secret created by the CSI driver
+
+# Persistence configuration for AWS
+persistence:
+  data:
+    storageClassName: "gp2" # Standard General Purpose SSD for EBS
+  shared_uploads:
+    storageClassName: "gp2"
+  blast_databases:
+    storageClassName: "gp2"
+
+postgres:
+  persistence:
+    storageClassName: "gp2"
+
+# Sandbox network isolation (mirrors Docker Compose #104)
+sandbox_mcp_server:
+  networkPolicy:
+    enabled: true
+    egressAllowlist:
+      # Add your license server CIDR here if needed:
+      # - cidr: "<your-license-server-ip>/32"
+      #   ports:
+      #     - port: 41954
+      #       protocol: TCP
+      []
+
+# Ingress configuration for AWS with an Application Load Balancer (ALB)
+ingress:
+  enabled: true
+  className: "alb" # Assumes the AWS Load Balancer Controller is installed
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip

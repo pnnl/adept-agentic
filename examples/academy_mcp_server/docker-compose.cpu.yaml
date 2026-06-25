@@ -1,0 +1,5 @@
+# CPU-only overlay (no-op for Academy — included for pattern consistency)
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.cpu.yaml up -d --build
+services: {}

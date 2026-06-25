@@ -1,0 +1,63 @@
+/* Kafel seccomp-bpf policy for ADEPT scientific Python sandbox.
+ * Strategy: DEFAULT ALLOW with DENY for dangerous syscalls.
+ *
+ * Rationale: nsjail 3.4's compiled-in Kafel syscall table does not recognize
+ * several syscalls that Python/glibc use at startup (fstat, close_range, rseq,
+ * statx, faccessat2). A whitelist approach would require recompiling nsjail with
+ * newer headers. The DENY approach blocks known-dangerous operations while
+ * allowing scientific Python workloads (numpy, pandas, scipy, rdkit, etc.) to
+ * function correctly.
+ *
+ * Defense-in-depth context: This seccomp layer works alongside:
+ *   - Mount namespace isolation (minimal filesystem view)
+ *   - PID namespace isolation (cannot see host processes)
+ *   - UID mapping to nobody (65534, zero capabilities)
+ *   - nftables egress allowlist (network restriction)
+ *   - Restricted env vars (5 safe vars only)
+ *   - Docker network isolation (sandbox_net only)
+ */
+
+POLICY sandbox_deny_dangerous {
+  DENY {
+    /* Process debugging/tracing — enables ptrace-based escape */
+    ptrace,
+
+    /* Filesystem mount manipulation — namespace escape vector */
+    mount,
+
+    /* Kernel module loading — arbitrary kernel code execution */
+    init_module, finit_module, delete_module,
+
+    /* Kernel replacement — complete system takeover */
+    kexec_load, kexec_file_load,
+
+    /* System power control */
+    reboot,
+
+    /* Kernel keyring manipulation — credential theft */
+    add_key, request_key, keyctl,
+
+    /* eBPF program loading — kernel-level code injection */
+    bpf,
+
+    /* Userfaultfd — used in kernel exploit chains */
+    userfaultfd,
+
+    /* Performance monitoring — information disclosure */
+    perf_event_open,
+
+    /* Kernel log access — information disclosure */
+    syslog,
+
+    /* Swap manipulation — DoS vector */
+    swapon, swapoff,
+
+    /* Raw I/O port access — hardware manipulation */
+    iopl, ioperm,
+
+    /* Clock manipulation — time-based attack enabler */
+    clock_settime, clock_adjtime, settimeofday, adjtimex
+  }
+}
+
+USE sandbox_deny_dangerous DEFAULT ALLOW

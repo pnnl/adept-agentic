@@ -1,0 +1,14 @@
+# Langfuse Worker Service - Internalized Image
+# This Dockerfile internalizes the Langfuse worker image for consistent artifact management
+# The worker handles background processing tasks for Langfuse v3
+
+# Using Langfuse v3 worker image
+FROM langfuse/langfuse-worker:3
+
+# Metadata
+LABEL maintainer="paul.rigor@pnnl.gov"
+LABEL description="Internalized Langfuse worker service for ADEPT observability"
+LABEL version="3.x"
+
+# The base image already includes all necessary configurations
+# Worker processes run in the background to handle async tasks

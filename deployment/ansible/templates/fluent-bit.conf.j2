@@ -1,0 +1,36 @@
+[SERVICE]
+    Flush         {{ _fluentbit_flush_interval | default(5) }}
+    Daemon        Off
+    Log_Level     info
+    Log_File      /data/fluent-bit/fluent-bit.log
+    Parsers_File  /etc/fluent-bit/parsers.conf
+    HTTP_Server   On
+    HTTP_Listen   127.0.0.1
+    HTTP_Port     2020
+    Health_Check  On
+
+[INPUT]
+    Name          tail
+    Tag           docker.*
+    Path          /data/docker/containers/*/*-json.log
+    Path_Key      source
+    Parser        docker
+    DB            /var/lib/fluent-bit/flb_docker.db
+    Mem_Buf_Limit 5MB
+    Skip_Long_Lines On
+    Refresh_Interval 10
+
+[FILTER]
+    Name          lua
+    Match         docker.*
+    script        /etc/fluent-bit/resolve_container_name.lua
+    call          resolve_container_name
+
+[OUTPUT]
+    Name              cloudwatch_logs
+    Match             docker.*
+    region            {{ _fluentbit_region }}
+    log_group_name    {{ _fluentbit_log_group }}
+    log_stream_prefix {{ _fluentbit_instance_id }}/
+    auto_create_group On
+    log_retention_days 30

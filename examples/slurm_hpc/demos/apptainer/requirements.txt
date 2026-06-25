@@ -1,0 +1,6 @@
+# ADEPT COBRApy/Gurobi compute environment
+# This file is the single dependency contract — both sandbox Docker
+# and Apptainer SIF install from it to guarantee runtime parity.
+cobra>=0.29.0,<1.0
+gurobipy>=11.0,<13.0
+numpy>=1.26,<2.0

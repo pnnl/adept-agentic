@@ -1,0 +1,28 @@
+# Dockerfile for building the documentation
+# This container includes all necessary dependencies to generate the PDF and PNG images.
+
+FROM ubuntu:22.04
+
+# 1. Install system dependencies
+# - openjdk-17-jre-headless: Required to run PlantUML
+# - graphviz: Required by PlantUML for rendering diagrams
+# - wget: To download the PlantUml jar
+# - texlive-*: A comprehensive LaTeX distribution
+# - latexmk: For robust LaTeX compilation
+RUN apt-get update &&     apt-get install -y --no-install-recommends     openjdk-17-jre-headless     graphviz     wget     build-essential     make     texlive-latex-base     texlive-latex-recommended     texlive-pictures     texlive-latex-extra     texlive-fonts-recommended     latexmk     && rm -rf /var/lib/apt/lists/*
+
+# 2. Download and install PlantUML
+ENV PLANTUML_VERSION=1.2025.4
+ENV PLANTUML_JAR_URL=https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_VERSION}/plantuml-${PLANTUML_VERSION}.jar
+ENV PLANTUML_DIR=/opt/plantuml
+ENV PLANTUML_JAR=${PLANTUML_DIR}/plantuml.jar
+
+RUN mkdir -p ${PLANTUML_DIR} && \
+    wget -O ${PLANTUML_JAR} ${PLANTUML_JAR_URL}
+
+# 3. Set up the working directory
+WORKDIR /app
+
+# The entrypoint is not set, as this container is intended to be used with `docker run`
+# to execute the Makefile.
+

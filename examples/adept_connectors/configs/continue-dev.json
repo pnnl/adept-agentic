@@ -1,0 +1,11 @@
+{
+  "models": [
+    {
+      "title": "ADEPT Scientific Agent",
+      "provider": "openai",
+      "apiBase": "http://localhost:19283/v1",
+      "model": "agentic-framework:scientific-agent-v1",
+      "apiKey": "not-needed-proxy-handles-auth"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+# values-local.yaml
+# Values for deploying agentic-framework on a local Kubernetes cluster (e.g., Docker Desktop).
+
+# -- The namespace where all Kubernetes resources will be deployed.
+namespace: agentic-framework
+
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Global values that can be inherited by all services
+global:
+  image:
+    # CRITICAL: Use 'Never' for local dev to force Kubernetes to use locally built images.
+    pullPolicy: Never
+    tag: "latest"
+  # -- Proxy configuration is not needed for a standard local setup.
+  proxy:
+    httpProxy: ""
+    httpsProxy: ""
+    noProxy: []
+
+# -- Image pull secrets are not needed for local images.
+imagePullSecrets: []
+
+# -- Secrets can be managed via a local .env file.
+# The helm-manage_local_k8s.sh script will create a secret from .env.
+secrets:
+  create: false # We will create the secret manually from .env
+  existingSecretName: "my-app-env-secret" # Name for the secret created from .env
+
+# -- Configuration for the main MCP server
+mcp_server:
+  enabled: true
+  image:
+    # Use the local image name. 'docker compose build' creates 'agentic_framework-mcp_server'.
+    repository: agentic_framework-mcp_server
+  service:
+    type: ClusterIP
+    port: 8080
+
+# -- Configuration for the Streamlit UI application (v2 — primary UI)
+streamlit_app_v2:
+  enabled: true
+  image:
+    repository: agentic-framework-streamlit-app-v2
+  service:
+    type: ClusterIP
+    port: 8503
+
+# -- Configuration for the HPC MCP server
+hpc_mcp_server:
+  enabled: true
+  image:
+    repository: agentic_framework-hpc_mcp_server
+  service:
+    type: ClusterIP
+    port: 8081
+
+# -- Configuration for the Sandbox MCP server
+sandbox_mcp_server:
+  enabled: true
+  image:
+    repository: agentic_framework-sandbox_mcp_server
+  service:
+    type: ClusterIP
+    port: 8082
+  # -- For local Docker Desktop, the 'docker' backend is simpler.
+  # This requires sharing the Docker socket with Kubernetes containers.
+  backend: "docker"
+
+  # -- Settings for the 'docker' backend.
+  dockerBackend:
+    privileged: true
+    socketPath: "/var/run/docker.sock"
+
+# -- Ingress is disabled by default for local development.
+# Access the UI via `kubectl port-forward`.
+ingress:
+  enabled: false
+  # If you enable it, configure for your local ingress controller (e.g., nginx)
+  # className: "nginx"
+  # hosts:
+  #   - host: agentic.local
+  #     paths:
+  #       - path: /
+  #         pathType: ImplementationSpecific
+
+# -- Persistence configuration for local development
+# Omitting storageClassName allows the default provisioner in Docker Desktop to be used.
+persistence:
+  data:
+    enabled: true
+    storageClassName: "" # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 1Gi # Smaller size for local dev
+  shared_uploads:
+    enabled: true
+    storageClassName: "" # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 1Gi
+  blast_databases:
+    enabled: true
+    storageClassName: "" # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 1Gi
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

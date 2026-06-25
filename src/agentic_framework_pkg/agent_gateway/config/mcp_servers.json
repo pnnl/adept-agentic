@@ -1,0 +1,93 @@
+{
+  "mcpServers": {
+    "get_system_information": {
+      "description": "A tool that retrieves basic system information from the container where the agent gateway is running, such as OS type and architecture.",
+      "args_schema": {},
+      "invocation": {
+        "protocol": "stdio",
+        "connection": {
+          "command": [
+            "python3",
+            "agentic_framework_pkg/agent_gateway/tools/sys_info_tool.py"
+          ],
+          "working_directory": "/app"
+        }
+      },
+      "acl": {
+        "global": true
+      }
+    },
+    "get_system_information_docker": {
+      "description": "A DOCKERIZED tool that retrieves basic system information from its own container, such as OS type and architecture.",
+      "args_schema": {},
+      "invocation": {
+        "protocol": "stdio",
+        "connection": {
+          "command": [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "sys-info-tool:latest"
+          ]
+        }
+      },
+      "acl": {
+        "global": true
+      }
+    },
+    "invoke_mcp_gateway_tool": {
+      "description": "A universal adapter tool that can invoke ANY other tool available to the 'docker mcp gateway run' command. Use this to run tools by providing the target tool's name and its specific arguments.",
+      "args_schema": {
+        "mcp_tool_name": {
+          "type": "string",
+          "description": "The exact name of the target tool you want to run via the gateway (e.g., 'get_system_information')."
+        },
+        "mcp_tool_args": {
+          "type": "object",
+          "description": "A JSON object containing all the arguments required by the target tool."
+        }
+      },
+      "invocation": {
+        "protocol": "stdio",
+        "connection": {
+          "command": [
+            "python3",
+            "agentic_framework_pkg/agent_gateway/tools/gateway_run_adapter.py"
+          ],
+          "working_directory": "/app"
+        }
+      },
+      "acl": {
+        "global": true
+      }
+    },
+    "example_weather_fetcher": {
+      "description": "Fetches current weather conditions for a specified city using an external API.",
+      "args_schema": {
+        "city": {
+          "type": "string",
+          "description": "The name of the city to get weather for."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Temperature unit (e.g., 'celsius', 'fahrenheit'). Defaults to 'celsius'.",
+          "default": "celsius"
+        }
+      },
+      "invocation": {
+        "protocol": "http",
+        "connection": {
+          "url": "https://api.example.com/weather/current",
+          "method": "GET",
+          "headers": {
+            "X-API-Key": "YOUR_EXTERNAL_WEATHER_API_KEY"
+          }
+        }
+      },
+      "acl": {
+        "global": true
+      }
+    }
+  }
+}

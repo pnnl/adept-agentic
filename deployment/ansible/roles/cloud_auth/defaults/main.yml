@@ -1,0 +1,6 @@
+---
+# Default variables for cloud_auth role
+# These can be overridden by inventory or extra vars
+
+# No defaults needed - all variables come from configuration file
+# This file is included for role structure completeness

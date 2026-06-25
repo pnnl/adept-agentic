@@ -1,0 +1,18 @@
+# Stage 1: Build stage with full UBI to install curl
+FROM registry.access.redhat.com/ubi9 AS ubi-micro-build
+
+# Create a temporary root filesystem
+RUN mkdir -p /mnt/rootfs
+
+# Install curl into the temporary root filesystem
+RUN dnf install --installroot /mnt/rootfs curl \
+    --releasever 9 --setopt install_weak_deps=false --nodocs -y; \
+    dnf --installroot /mnt/rootfs clean all
+
+# Stage 2: Keycloak stage with the official Keycloak image
+FROM quay.io/keycloak/keycloak:26.3.2
+
+# Copy the installed curl and its dependencies from the build stage
+COPY --from=ubi-micro-build /mnt/rootfs /
+
+# Hmm, hope this works.

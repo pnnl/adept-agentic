@@ -1,0 +1,607 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ADEPT Agentic Framework Admin API",
+    "version": "1.0.20260601",
+    "description": "Administrative API for the ADEPT Orchestration Service. Requires 'admin' role in JWT groups claim.",
+    "contact": {
+      "name": "ADEPT Platform Engineering Team",
+      "url": "https://github.com/pnnl/adept-agentic"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8084",
+      "description": "Orchestration Service (internal network only)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Tool Management",
+      "description": "Register and manage external MCP/HTTP tools"
+    },
+    {
+      "name": "Session Management",
+      "description": "Session statistics and cleanup"
+    },
+    {
+      "name": "Internal",
+      "description": "Service-to-service communication"
+    },
+    {
+      "name": "Health",
+      "description": "Service health checks"
+    }
+  ],
+  "paths": {
+    "/internal/sessions/{session_id}/context": {
+      "get": {
+        "tags": [
+          "Internal API"
+        ],
+        "summary": "Get Session Context",
+        "description": "Get session context data.\n\nThis endpoint provides MCP servers with read access to session state\nwithout requiring direct imports or database connections.",
+        "operationId": "get_session_context_internal_sessions__session_id__context_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Session Context Internal Sessions  Session Id  Context Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Internal API"
+        ],
+        "summary": "Update Session Context",
+        "description": "Update session context data.\n\nThis endpoint allows MCP servers to update session state\nwithout requiring direct database access.",
+        "operationId": "update_session_context_internal_sessions__session_id__context_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Context Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Session Context Internal Sessions  Session Id  Context Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/sessions": {
+      "post": {
+        "tags": [
+          "Internal API"
+        ],
+        "summary": "Create Session",
+        "description": "Create a new session if it doesn't exist.\n\nThis endpoint allows MCP servers to ensure sessions exist\nbefore attempting to store context.",
+        "operationId": "create_session_internal_sessions_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionContextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Session Internal Sessions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "Internal API"
+        ],
+        "summary": "Get Session Info",
+        "description": "Get basic session information.\n\nReturns whether the session has context loaded. For full context data,\nuse the /sessions/{session_id}/context endpoint.",
+        "operationId": "get_session_info_internal_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Session Info Internal Sessions  Session Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/health": {
+      "get": {
+        "tags": [
+          "Internal API"
+        ],
+        "summary": "Internal Health Check",
+        "description": "Simple health check for internal session API.",
+        "operationId": "internal_health_check_internal_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Internal Health Check Internal Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoke": {
+      "post": {
+        "summary": "Invoke Agent",
+        "description": "The primary endpoint for executing agentic workflows.\n\nEnhanced to provide synchronous execution with full session support.",
+        "operationId": "invoke_agent_invoke_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/tools/register": {
+      "post": {
+        "tags": [
+          "Admin Tools"
+        ],
+        "summary": "Register Tool (Admin Legacy)",
+        "description": "Legacy admin endpoint that forwards to the main tool registration.",
+        "operationId": "admin_register_tool_admin_tools_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Config"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/tools/list": {
+      "get": {
+        "tags": [
+          "Admin Tools"
+        ],
+        "summary": "List Tools (Admin Legacy)",
+        "description": "Legacy admin endpoint that forwards to the main tool listing.",
+        "operationId": "admin_list_tools_admin_tools_list_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/tools/{tool_name}": {
+      "delete": {
+        "tags": [
+          "Admin Tools"
+        ],
+        "summary": "Delete Tool (Admin Legacy)",
+        "description": "Legacy admin endpoint that forwards to the main tool deletion.",
+        "operationId": "admin_delete_tool_admin_tools__tool_name__delete",
+        "parameters": [
+          {
+            "name": "tool_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tool Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/tools/{tool_name}/acl": {
+      "put": {
+        "tags": [
+          "Admin Tools"
+        ],
+        "summary": "Update Tool ACL (Admin Legacy)",
+        "description": "Legacy admin endpoint that forwards to the main ACL update.",
+        "operationId": "admin_update_tool_acl_admin_tools__tool_name__acl_put",
+        "parameters": [
+          {
+            "name": "tool_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tool Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Acl Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Provides a simple health check endpoint for monitoring.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/sessions/stats": {
+      "get": {
+        "summary": "Get Session Stats",
+        "description": "Get comprehensive session and agent pool statistics from the hybrid service.",
+        "operationId": "get_session_stats_admin_sessions_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/sessions/cleanup": {
+      "post": {
+        "summary": "Cleanup Expired Sessions",
+        "description": "Manually trigger cleanup of expired sessions.",
+        "operationId": "cleanup_expired_sessions_admin_sessions_cleanup_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SessionContextRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "SessionContextRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Keycloak JWT token with 'admin' group claim"
+      }
+    }
+  }
+}

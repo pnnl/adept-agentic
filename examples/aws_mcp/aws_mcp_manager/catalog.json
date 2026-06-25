@@ -1,0 +1,503 @@
+{
+  "version": "1.0",
+  "description": "AWS Labs MCP server catalog (auto-generated)",
+  "server_count": 62,
+  "servers": [
+    {
+      "name": "amazon-bedrock-agentcore-mcp-server",
+      "command": "awslabs.amazon-bedrock-agentcore-mcp-server",
+      "package": "awslabs.amazon-bedrock-agentcore-mcp-server",
+      "description": "Model Context Protocol (MCP) server for Amazon Bedrock AgentCore services",
+      "tool_prefix": "bedrock_agentcore",
+      "install_cmd": "pip install awslabs.amazon-bedrock-agentcore-mcp-server"
+    },
+    {
+      "name": "amazon-kendra-index-mcp-server",
+      "command": "awslabs.amazon-kendra-index-mcp-server",
+      "package": "awslabs.amazon-kendra-index-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for amazon-kendra-index-mcp-server",
+      "tool_prefix": "kendra_index",
+      "install_cmd": "pip install awslabs.amazon-kendra-index-mcp-server"
+    },
+    {
+      "name": "amazon-keyspaces-mcp-server",
+      "command": "awslabs.amazon-keyspaces-mcp-server",
+      "package": "awslabs.amazon-keyspaces-mcp-server",
+      "description": "An Amazon Keyspaces (for Apache Cassandra) MCP server for interacting with Amazon Keyspaces and Apache Cassandra.",
+      "tool_prefix": "keyspaces",
+      "install_cmd": "pip install awslabs.amazon-keyspaces-mcp-server"
+    },
+    {
+      "name": "amazon-mq-mcp-server",
+      "command": "awslabs.amazon-mq-mcp-server",
+      "package": "awslabs.amazon-mq-mcp-server",
+      "description": "A Model Context Protocol server for AmazonMQ to provision and manage your AMQ brokers",
+      "tool_prefix": "mq",
+      "install_cmd": "pip install awslabs.amazon-mq-mcp-server"
+    },
+    {
+      "name": "amazon-neptune-mcp-server",
+      "command": "awslabs.amazon-neptune-mcp-server",
+      "package": "awslabs.amazon-neptune-mcp-server",
+      "description": "An Amazon Neptune MCP server that allows for fetching status, schema, and querying using openCypher, Gremlin, and SPARQL for Neptune Database and openCypher for Neptune Analytics.",
+      "tool_prefix": "neptune",
+      "install_cmd": "pip install awslabs.amazon-neptune-mcp-server"
+    },
+    {
+      "name": "amazon-qbusiness-anonymous-mcp-server",
+      "command": "awslabs.amazon-qbusiness-anonymous-mcp-server",
+      "package": "awslabs.amazon-qbusiness-anonymous-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Amazon Q Business anonymous mode application.",
+      "tool_prefix": "qbusiness_anonymous",
+      "install_cmd": "pip install awslabs.amazon-qbusiness-anonymous-mcp-server"
+    },
+    {
+      "name": "amazon-qindex-mcp-server",
+      "command": "awslabs.amazon-qindex-mcp-server",
+      "package": "awslabs.amazon-qindex-mcp-server",
+      "description": "This is an AWS Labs Model Context Protocol (MCP) server implementation that enables Independent Software Vendors (ISVs) to interact with Amazon Q Business",
+      "tool_prefix": "qindex",
+      "install_cmd": "pip install awslabs.amazon-qindex-mcp-server"
+    },
+    {
+      "name": "amazon-sns-sqs-mcp-server",
+      "command": "awslabs.amazon-sns-sqs-mcp-server",
+      "package": "awslabs.amazon-sns-sqs-mcp-server",
+      "description": "A Model Context Protocol server for Amazon SNS and SQS to provision and manage your messaging services",
+      "tool_prefix": "sns_sqs",
+      "install_cmd": "pip install awslabs.amazon-sns-sqs-mcp-server"
+    },
+    {
+      "name": "aurora-dsql-mcp-server",
+      "command": "awslabs.aurora-dsql-mcp-server",
+      "package": "awslabs.aurora-dsql-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Aurora DSQL",
+      "tool_prefix": "aurora_dsql",
+      "install_cmd": "pip install awslabs.aurora-dsql-mcp-server"
+    },
+    {
+      "name": "aws-api-mcp-server",
+      "command": "awslabs.aws-api-mcp-server",
+      "package": "awslabs.aws-api-mcp-server",
+      "description": "Model Context Protocol (MCP) server for interacting with AWS",
+      "tool_prefix": "api",
+      "install_cmd": "pip install awslabs.aws-api-mcp-server"
+    },
+    {
+      "name": "aws-appsync-mcp-server",
+      "command": "awslabs.aws-appsync-mcp-server",
+      "package": "awslabs.aws-appsync-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS AppSync Service capabilities",
+      "tool_prefix": "appsync",
+      "install_cmd": "pip install awslabs.aws-appsync-mcp-server"
+    },
+    {
+      "name": "aws-bedrock-custom-model-import-mcp-server",
+      "command": "awslabs.aws-bedrock-custom-model-import-mcp-server",
+      "package": "awslabs.aws-bedrock-custom-model-import-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Bedrock Custom Model Import",
+      "tool_prefix": "bedrock_custom_model_import",
+      "install_cmd": "pip install awslabs.aws-bedrock-custom-model-import-mcp-server"
+    },
+    {
+      "name": "aws-bedrock-data-automation-mcp-server",
+      "command": "awslabs.aws-bedrock-data-automation-mcp-server",
+      "package": "awslabs.aws-bedrock-data-automation-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Bedrock Data Automation",
+      "tool_prefix": "bedrock_data_automation",
+      "install_cmd": "pip install awslabs.aws-bedrock-data-automation-mcp-server"
+    },
+    {
+      "name": "aws-dataprocessing-mcp-server",
+      "command": "awslabs.aws-dataprocessing-mcp-server",
+      "package": "awslabs.aws-dataprocessing-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for dataprocessing",
+      "tool_prefix": "dataprocessing",
+      "install_cmd": "pip install awslabs.aws-dataprocessing-mcp-server"
+    },
+    {
+      "name": "aws-documentation-mcp-server",
+      "command": "awslabs.aws-documentation-mcp-server",
+      "package": "awslabs.aws-documentation-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Documentation",
+      "tool_prefix": "documentation",
+      "install_cmd": "pip install awslabs.aws-documentation-mcp-server"
+    },
+    {
+      "name": "aws-healthomics-mcp-server",
+      "command": "awslabs.aws-healthomics-mcp-server",
+      "package": "awslabs.aws-healthomics-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS HealthOmics",
+      "tool_prefix": "healthomics",
+      "install_cmd": "pip install awslabs.aws-healthomics-mcp-server"
+    },
+    {
+      "name": "aws-iac-mcp-server",
+      "command": "awslabs.aws-iac-mcp-server",
+      "package": "awslabs.aws-iac-mcp-server",
+      "description": "An Infrastructure as Code MCP server that provides CloudFormation template validation, compliance checking, and deployment troubleshooting capabilities.",
+      "tool_prefix": "iac",
+      "install_cmd": "pip install awslabs.aws-iac-mcp-server"
+    },
+    {
+      "name": "aws-iot-sitewise-mcp-server",
+      "command": "awslabs.aws-iot-sitewise-mcp-server",
+      "package": "awslabs.aws-iot-sitewise-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for aws-iot-sitewise",
+      "tool_prefix": "iot_sitewise",
+      "install_cmd": "pip install awslabs.aws-iot-sitewise-mcp-server"
+    },
+    {
+      "name": "aws-location-mcp-server",
+      "command": "awslabs.aws-location-mcp-server",
+      "package": "awslabs.aws-location-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Location Service",
+      "tool_prefix": "location",
+      "install_cmd": "pip install awslabs.aws-location-mcp-server"
+    },
+    {
+      "name": "aws-msk-mcp-server",
+      "command": "awslabs.aws-msk-mcp-server",
+      "package": "awslabs.aws-msk-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for aws-msk",
+      "tool_prefix": "msk",
+      "install_cmd": "pip install awslabs.aws-msk-mcp-server"
+    },
+    {
+      "name": "aws-network-mcp-server",
+      "command": "awslabs.aws-network-mcp-server",
+      "package": "awslabs.aws-network-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for aws-network",
+      "tool_prefix": "network",
+      "install_cmd": "pip install awslabs.aws-network-mcp-server"
+    },
+    {
+      "name": "aws-pricing-mcp-server",
+      "command": "awslabs.aws-pricing-mcp-server",
+      "package": "awslabs.aws-pricing-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for official pricing of AWS services",
+      "tool_prefix": "pricing",
+      "install_cmd": "pip install awslabs.aws-pricing-mcp-server"
+    },
+    {
+      "name": "aws-serverless-mcp-server",
+      "command": "awslabs.aws-serverless-mcp-server",
+      "package": "awslabs.aws-serverless-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Serverless",
+      "tool_prefix": "serverless",
+      "install_cmd": "pip install awslabs.aws-serverless-mcp-server"
+    },
+    {
+      "name": "aws-support-mcp-server",
+      "command": "awslabs.aws-support-mcp-server",
+      "package": "awslabs.aws-support-mcp-server",
+      "description": "An Model Context Protocol (MCP) server for AWS SupportAPI.",
+      "tool_prefix": "support",
+      "install_cmd": "pip install awslabs.aws-support-mcp-server"
+    },
+    {
+      "name": "bedrock-kb-retrieval-mcp-server",
+      "command": "awslabs.bedrock-kb-retrieval-mcp-server",
+      "package": "awslabs.bedrock-kb-retrieval-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Bedrock Knowledge Base Retrieval",
+      "tool_prefix": "bedrock_kb_retrieval",
+      "install_cmd": "pip install awslabs.bedrock-kb-retrieval-mcp-server"
+    },
+    {
+      "name": "billing-cost-management-mcp-server",
+      "command": "awslabs.billing-cost-management-mcp-server",
+      "package": "awslabs.billing-cost-management-mcp-server",
+      "description": "A Model Context Protocol (MCP) server that provides tools for AWS Billing and Cost Management by wrapping boto3 SDK functions.",
+      "tool_prefix": "billing_cost_management",
+      "install_cmd": "pip install awslabs.billing-cost-management-mcp-server"
+    },
+    {
+      "name": "ccapi-mcp-server",
+      "command": "awslabs.ccapi-mcp-server",
+      "package": "awslabs.ccapi-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for managing AWS resources via Cloud Control API",
+      "tool_prefix": "ccapi",
+      "install_cmd": "pip install awslabs.ccapi-mcp-server"
+    },
+    {
+      "name": "cfn-mcp-server",
+      "command": "awslabs.cfn-mcp-server",
+      "package": "awslabs.cfn-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for doing common cloudformation tasks and for managing your resources in your AWS account",
+      "tool_prefix": "cfn",
+      "install_cmd": "pip install awslabs.cfn-mcp-server"
+    },
+    {
+      "name": "cloudtrail-mcp-server",
+      "command": "awslabs.cloudtrail-mcp-server",
+      "package": "awslabs.cloudtrail-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for cloudtrail",
+      "tool_prefix": "cloudtrail",
+      "install_cmd": "pip install awslabs.cloudtrail-mcp-server"
+    },
+    {
+      "name": "cloudwatch-applicationsignals-mcp-server",
+      "command": "awslabs.cloudwatch-applicationsignals-mcp-server",
+      "package": "awslabs.cloudwatch-applicationsignals-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Application Signals",
+      "tool_prefix": "cloudwatch_applicationsignals",
+      "install_cmd": "pip install awslabs.cloudwatch-applicationsignals-mcp-server"
+    },
+    {
+      "name": "cloudwatch-appsignals-mcp-server",
+      "command": "awslabs.cloudwatch-appsignals-mcp-server",
+      "package": "awslabs.cloudwatch-appsignals-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Application Signals",
+      "tool_prefix": "cloudwatch_appsignals",
+      "install_cmd": "pip install awslabs.cloudwatch-appsignals-mcp-server"
+    },
+    {
+      "name": "cloudwatch-mcp-server",
+      "command": "awslabs.cloudwatch-mcp-server",
+      "package": "awslabs.cloudwatch-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for cloudwatch",
+      "tool_prefix": "cloudwatch",
+      "install_cmd": "pip install awslabs.cloudwatch-mcp-server"
+    },
+    {
+      "name": "core-mcp-server",
+      "command": "awslabs.core-mcp-server",
+      "package": "awslabs.core-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for aswlabs Core MCP Server",
+      "tool_prefix": "core",
+      "install_cmd": "pip install awslabs.core-mcp-server"
+    },
+    {
+      "name": "cost-explorer-mcp-server",
+      "command": "awslabs.cost-explorer-mcp-server",
+      "package": "awslabs.cost-explorer-mcp-server",
+      "description": "MCP server for analyzing AWS costs and usage data through the AWS Cost Explorer API",
+      "tool_prefix": "cost_explorer",
+      "install_cmd": "pip install awslabs.cost-explorer-mcp-server"
+    },
+    {
+      "name": "document-loader-mcp-server",
+      "command": "awslabs.document-loader-mcp-server",
+      "package": "awslabs.document-loader-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for document parsing",
+      "tool_prefix": "document_loader",
+      "install_cmd": "pip install awslabs.document-loader-mcp-server"
+    },
+    {
+      "name": "documentdb-mcp-server",
+      "command": "awslabs.documentdb-mcp-server",
+      "package": "awslabs.documentdb-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for documentdb",
+      "tool_prefix": "documentdb",
+      "install_cmd": "pip install awslabs.documentdb-mcp-server"
+    },
+    {
+      "name": "dynamodb-mcp-server",
+      "command": "awslabs.dynamodb-mcp-server",
+      "package": "awslabs.dynamodb-mcp-server",
+      "description": "The official MCP Server for interacting with AWS DynamoDB",
+      "tool_prefix": "dynamodb",
+      "install_cmd": "pip install awslabs.dynamodb-mcp-server"
+    },
+    {
+      "name": "ecs-mcp-server",
+      "command": "ecs-mcp-server",
+      "package": "awslabs.ecs-mcp-server",
+      "description": "AWS ECS MCP Server for automating containerization and deployment of web applications to AWS ECS",
+      "tool_prefix": "ecs",
+      "install_cmd": "pip install awslabs.ecs-mcp-server"
+    },
+    {
+      "name": "eks-mcp-server",
+      "command": "awslabs.eks-mcp-server",
+      "package": "awslabs.eks-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for EKS",
+      "tool_prefix": "eks",
+      "install_cmd": "pip install awslabs.eks-mcp-server"
+    },
+    {
+      "name": "elasticache-mcp-server",
+      "command": "awslabs.elasticache-mcp-server",
+      "package": "awslabs.elasticache-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Amazon ElastiCache",
+      "tool_prefix": "elasticache",
+      "install_cmd": "pip install awslabs.elasticache-mcp-server"
+    },
+    {
+      "name": "finch-mcp-server",
+      "command": "awslabs.finch-mcp-server",
+      "package": "awslabs.finch-mcp-server",
+      "description": "A Model Context Protocol server for Finch to build and push container images",
+      "tool_prefix": "finch",
+      "install_cmd": "pip install awslabs.finch-mcp-server"
+    },
+    {
+      "name": "frontend-mcp-server",
+      "command": "awslabs.frontend-mcp-server",
+      "package": "awslabs.frontend-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for frontend",
+      "tool_prefix": "frontend",
+      "install_cmd": "pip install awslabs.frontend-mcp-server"
+    },
+    {
+      "name": "git-repo-research-mcp-server",
+      "command": "awslabs.git-repo-research-mcp-server",
+      "package": "awslabs.git-repo-research-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for researching git repositories",
+      "tool_prefix": "git_repo_research",
+      "install_cmd": "pip install awslabs.git-repo-research-mcp-server"
+    },
+    {
+      "name": "healthimaging-mcp-server",
+      "command": "awslabs.healthimaging-mcp-server",
+      "package": "awslabs.healthimaging-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for HealthImaging",
+      "tool_prefix": "healthimaging",
+      "install_cmd": "pip install awslabs.healthimaging-mcp-server"
+    },
+    {
+      "name": "healthlake-mcp-server",
+      "command": "awslabs.healthlake-mcp-server",
+      "package": "awslabs.healthlake-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for healthlake",
+      "tool_prefix": "healthlake",
+      "install_cmd": "pip install awslabs.healthlake-mcp-server"
+    },
+    {
+      "name": "iam-mcp-server",
+      "command": "awslabs.iam-mcp-server",
+      "package": "awslabs.iam-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for managing AWS IAM resources including users, roles, policies, and permissions",
+      "tool_prefix": "iam",
+      "install_cmd": "pip install awslabs.iam-mcp-server"
+    },
+    {
+      "name": "lambda-tool-mcp-server",
+      "command": "awslabs.lambda-tool-mcp-server",
+      "package": "awslabs.lambda-tool-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Lambda Tools",
+      "tool_prefix": "lambda_tool",
+      "install_cmd": "pip install awslabs.lambda-tool-mcp-server"
+    },
+    {
+      "name": "mcp-lambda-handler",
+      "command": "awslabs.mcp-lambda-handler",
+      "package": "awslabs.mcp-lambda-handler",
+      "description": "AWS Lambda MCP Server: A serverless HTTP handler for the Model Context Protocol (MCP) using AWS Lambda.",
+      "tool_prefix": "mcp_lambda_handler",
+      "install_cmd": "pip install awslabs.mcp-lambda-handler"
+    },
+    {
+      "name": "memcached-mcp-server",
+      "command": "awslabs.memcached-mcp-server",
+      "package": "awslabs.memcached-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Amazon ElastiCache Memcached",
+      "tool_prefix": "memcached",
+      "install_cmd": "pip install awslabs.memcached-mcp-server"
+    },
+    {
+      "name": "mysql-mcp-server",
+      "command": "awslabs.mysql-mcp-server",
+      "package": "awslabs.mysql-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for mysql",
+      "tool_prefix": "mysql",
+      "install_cmd": "pip install awslabs.mysql-mcp-server"
+    },
+    {
+      "name": "nova-canvas-mcp-server",
+      "command": "awslabs.nova-canvas-mcp-server",
+      "package": "awslabs.nova-canvas-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Amazon Nova Canvas",
+      "tool_prefix": "nova_canvas",
+      "install_cmd": "pip install awslabs.nova-canvas-mcp-server"
+    },
+    {
+      "name": "openapi-mcp-server",
+      "command": "awslabs.openapi-mcp-server",
+      "package": "awslabs.openapi-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for OpenAPI",
+      "tool_prefix": "openapi",
+      "install_cmd": "pip install awslabs.openapi-mcp-server"
+    },
+    {
+      "name": "postgres-mcp-server",
+      "command": "awslabs.postgres-mcp-server",
+      "package": "awslabs.postgres-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for postgres",
+      "tool_prefix": "postgres",
+      "install_cmd": "pip install awslabs.postgres-mcp-server"
+    },
+    {
+      "name": "prometheus-mcp-server",
+      "command": "awslabs.prometheus-mcp-server",
+      "package": "awslabs.prometheus-mcp-server",
+      "description": "MCP server for interacting with AWS Managed Prometheus",
+      "tool_prefix": "prometheus",
+      "install_cmd": "pip install awslabs.prometheus-mcp-server"
+    },
+    {
+      "name": "redshift-mcp-server",
+      "command": "awslabs.redshift-mcp-server",
+      "package": "awslabs.redshift-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Redshift",
+      "tool_prefix": "redshift",
+      "install_cmd": "pip install awslabs.redshift-mcp-server"
+    },
+    {
+      "name": "s3-tables-mcp-server",
+      "command": "awslabs.s3-tables-mcp-server",
+      "package": "awslabs.s3-tables-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for awslabs.s3-tables-mcp-server",
+      "tool_prefix": "s3_tables",
+      "install_cmd": "pip install awslabs.s3-tables-mcp-server"
+    },
+    {
+      "name": "sagemaker-ai-mcp-server",
+      "command": "awslabs.sagemaker-ai-mcp-server",
+      "package": "awslabs.sagemaker-ai-mcp-server",
+      "description": "MCP server for AWS SageMaker AI",
+      "tool_prefix": "sagemaker_ai",
+      "install_cmd": "pip install awslabs.sagemaker-ai-mcp-server"
+    },
+    {
+      "name": "stepfunctions-tool-mcp-server",
+      "command": "awslabs.stepfunctions-tool-mcp-server",
+      "package": "awslabs.stepfunctions-tool-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for AWS Step Functions",
+      "tool_prefix": "stepfunctions_tool",
+      "install_cmd": "pip install awslabs.stepfunctions-tool-mcp-server"
+    },
+    {
+      "name": "syntheticdata-mcp-server",
+      "command": "awslabs.syntheticdata-mcp-server",
+      "package": "awslabs.syntheticdata-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for syntheticdata",
+      "tool_prefix": "syntheticdata",
+      "install_cmd": "pip install awslabs.syntheticdata-mcp-server"
+    },
+    {
+      "name": "timestream-for-influxdb-mcp-server",
+      "command": "awslabs.timestream-for-influxdb-mcp-server",
+      "package": "awslabs.timestream-for-influxdb-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for Timestream for InfluxDB",
+      "tool_prefix": "timestream_for_influxdb",
+      "install_cmd": "pip install awslabs.timestream-for-influxdb-mcp-server"
+    },
+    {
+      "name": "valkey-mcp-server",
+      "command": "awslabs.valkey-mcp-server",
+      "package": "awslabs.valkey-mcp-server",
+      "description": "An AWS Labs Model Context Protocol (MCP) server for valkey",
+      "tool_prefix": "valkey",
+      "install_cmd": "pip install awslabs.valkey-mcp-server"
+    },
+    {
+      "name": "well-architected-security-mcp-server",
+      "command": "awslabs.well-architected-security-mcp-server",
+      "package": "awslabs.well-architected-security-mcp-server",
+      "description": "AWS Well-Architected Security Assessment Tool MCP Server",
+      "tool_prefix": "well_architected_security",
+      "install_cmd": "pip install awslabs.well-architected-security-mcp-server"
+    }
+  ]
+}

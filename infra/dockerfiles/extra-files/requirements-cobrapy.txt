@@ -1,0 +1,29 @@
+# Core COBRApy and metabolic modeling dependencies
+# Pinned to exact versions for supply chain security (#104)
+cobra==0.31.1
+python-libsbml==5.21.1
+cameo==0.11.2
+
+# Data manipulation and export
+pandas==2.3.3
+openpyxl==3.1.5
+
+# Numerical computing and scientific libraries
+numpy==2.2.6
+scipy==1.15.3
+
+# Visualization
+matplotlib==3.10.9
+
+# Progress bars for long computations
+tqdm==4.67.3
+
+# Strain design optimization
+straindesign==1.18
+
+# Model quality assessment and validation
+memote==0.17.0
+
+# Solvers
+scikit-glpk==0.5.0
+gurobipy==13.0.2

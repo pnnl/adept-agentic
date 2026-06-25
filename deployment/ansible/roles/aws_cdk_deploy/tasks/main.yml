@@ -1,0 +1,155 @@
+---
+# AWS CDK deployment role
+# Wraps existing CDK infrastructure in devtools/aws-cdk/
+
+- name: Set CDK deployment variables
+  set_fact:
+    cdk_root_path: "{{ playbook_dir }}/../../../devtools/aws-cdk"
+    cdk_env_label: "{{ deployment.environment }}"
+    cdk_user_label: "{{ deployment.user }}"
+    deployment_id: "ade-{{ deployment.environment }}-{{ deployment.user }}"
+
+- name: Check if CDK project exists
+  stat:
+    path: "{{ cdk_root_path }}/app.py"
+  register: cdk_project
+
+- name: Fail if CDK project not found
+  fail:
+    msg: "CDK project not found at {{ cdk_root_path }}. Ensure devtools/aws-cdk/ exists."
+  when: not cdk_project.stat.exists
+
+- name: Bootstrap CDK (if needed)
+  command: cdk bootstrap aws://{{ credentials.aws.account_id }}/{{ credentials.aws.region }}
+  args:
+    chdir: "{{ cdk_root_path }}"
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+  register: cdk_bootstrap
+  changed_when: "'completed' in cdk_bootstrap.stdout or 'already bootstrapped' in cdk_bootstrap.stdout"
+  failed_when: false
+
+- name: Display CDK bootstrap status
+  debug:
+    msg: "CDK bootstrap: {{ 'Already bootstrapped' if 'already' in (cdk_bootstrap.stdout | default('')) else 'Completed' }}"
+
+- name: Synthesize CDK stack (dry-run)
+  command: >
+    cdk synth
+    -c env={{ cdk_env_label }}
+    -c user={{ cdk_user_label }}
+    -c deploy_ec2=false
+    -c deploy_app=true
+    -c vpc={{ network.vpc_id }}
+    -c waf_arn="{{ application.waf.webacl_arn }}"
+    -c domain_name="{{ application.alb.certificate.domain_name }}"
+    -c waf_id="{{ application.waf.waf_id }}"
+  args:
+    chdir: "{{ cdk_root_path }}"
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+    CDK_ENV_LABEL: "{{ cdk_env_label }}"
+    CDK_USER_LABEL: "{{ cdk_user_label }}"
+  register: cdk_synth
+  changed_when: false
+
+- name: Deploy CDK application stack
+  command: >
+    cdk deploy
+    -c env={{ cdk_env_label }}
+    -c user={{ cdk_user_label }}
+    -c deploy_ec2=false
+    -c deploy_app=true
+    -c vpc={{ network.vpc_id }}
+    -c waf_arn="{{ application.waf.webacl_arn }}"
+    -c domain_name="{{ application.alb.certificate.domain_name }}"
+    -c waf_id="{{ application.waf.waf_id }}"
+    --require-approval never
+    --outputs-file /tmp/cdk-outputs-{{ deployment.name }}.json
+  args:
+    chdir: "{{ cdk_root_path }}"
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+    CDK_ENV_LABEL: "{{ cdk_env_label }}"
+    CDK_USER_LABEL: "{{ cdk_user_label }}"
+    CDK_VPC_ID: "{{ network.vpc_id }}"
+    CDK_WAF_WEBACL_ARN: "{{ application.waf.webacl_arn }}"
+    CDK_DOMAIN_NAME: "{{ application.alb.certificate.domain_name }}"
+    CDK_WAF_ID: "{{ application.waf.waf_id }}"
+  register: cdk_deploy
+  changed_when: true
+
+- name: Get CDK stack outputs from CloudFormation
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name "ADE-{{ cdk_env_label }}-{{ cdk_user_label }}-App-Stack"
+    --query "Stacks[0].Outputs"
+    --output json
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ credentials.aws.access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ credentials.aws.secret_access_key }}"
+    AWS_REGION: "{{ credentials.aws.region }}"
+  register: cdk_outputs
+  changed_when: false
+
+- name: Parse CDK stack outputs
+  set_fact:
+    stack_outputs: "{{ cdk_outputs.stdout | from_json }}"
+
+- name: Extract application URLs
+  set_fact:
+    streamlit_url: "{{ stack_outputs | selectattr('OutputKey', 'equalto', 'StreamlitURL') | map(attribute='OutputValue') | first | default('Not found') }}"
+    jupyter_url: "{{ stack_outputs | selectattr('OutputKey', 'equalto', 'JupyterURL') | map(attribute='OutputValue') | first | default('Not found') }}"
+    alb_dns: "{{ stack_outputs | selectattr('OutputKey', 'equalto', 'LoadBalancerDNS') | map(attribute='OutputValue') | first | default('Not found') }}"
+    user_pool_id: "{{ stack_outputs | selectattr('OutputKey', 'equalto', 'UserPoolId') | map(attribute='OutputValue') | first | default('Not found') }}"
+
+- name: Display CDK deployment summary
+  debug:
+    msg: |
+      ================================================
+      CDK Deployment Complete!
+      ================================================
+      Stack Name: ADE-{{ cdk_env_label }}-{{ cdk_user_label }}-App-Stack
+      Deployment ID: {{ deployment_id }}
+
+      Application URLs:
+        Streamlit:  {{ streamlit_url }}
+        JupyterLab: {{ jupyter_url }}
+
+      Infrastructure:
+        ALB DNS: {{ alb_dns }}
+        Cognito User Pool ID: {{ user_pool_id }}
+
+      Next Steps:
+        1. Register EC2 instances to ALB target groups
+        2. Create Cognito users
+        3. Validate deployment
+      ================================================
+
+- name: Save deployment outputs to file
+  copy:
+    content: |
+      # ADEPT AWS Deployment Outputs
+      # Generated: {{ ansible_date_time.iso8601 }}
+
+      Stack Name: ADE-{{ cdk_env_label }}-{{ cdk_user_label }}-App-Stack
+      Deployment ID: {{ deployment_id }}
+
+      Application URLs:
+        Streamlit:  {{ streamlit_url }}
+        JupyterLab: {{ jupyter_url }}
+
+      Infrastructure:
+        ALB DNS: {{ alb_dns }}
+        Cognito User Pool ID: {{ user_pool_id }}
+
+      Full Stack Outputs:
+      {{ stack_outputs | to_nice_json }}
+    dest: "/tmp/adept-aws-deployment-{{ deployment.name }}.txt"
+    mode: 0644

@@ -1,0 +1,18 @@
+# Redis for Langfuse - Internalized Image
+# This Dockerfile internalizes the Redis image for consistent artifact management
+
+FROM redis:7-alpine
+
+# Metadata
+LABEL maintainer="paul.rigor@pnnl.gov"
+LABEL description="Internalized Redis for Langfuse observability caching"
+LABEL version="7-alpine"
+
+# No modifications currently needed - this is for image standardization
+# Future customizations can be added here:
+# - Custom Redis configurations
+# - Persistence settings
+# - Security hardening
+# - Clustering support
+
+# The entrypoint and CMD are inherited from the base image

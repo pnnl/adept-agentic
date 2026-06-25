@@ -1,0 +1,20 @@
+# Langfuse Web Service - Internalized Image
+# This Dockerfile internalizes the Langfuse web image for consistent artifact management
+# and potential future customization
+
+# Using Langfuse v3 with ClickHouse for scalable observability
+FROM langfuse/langfuse:3
+
+# Metadata
+LABEL maintainer="paul.rigor@pnnl.gov"
+LABEL description="Internalized Langfuse web service for ADEPT observability"
+LABEL version="3.x"
+
+# ADEPT Customization: Skip ClickHouse migrations due to Zookeeper configuration issues
+# in single-node setup. This is a workaround for Langfuse v3 migration bug.
+ENV SKIP_CLICKHOUSE_MIGRATION=true
+ENV LANGFUSE_DISABLE_CLICKHOUSE_MIGRATION=true
+ENV CLICKHOUSE_MIGRATION_URL=""
+
+# For now, we'll rely on environment variables to skip migrations
+# The base image entrypoint should respect these settings

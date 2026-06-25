@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agentic-framework.fullname" . }}-config
+  labels:
+    {{- include "agentic-framework.labels" . | nindent 4 }}
+data:
+  # URLs for services to talk to each other inside Kubernetes
+  DEFAULT_MCP_SERVER_URL_FOR_LANGCHAIN: "http://{{ include "agentic-framework.fullname" . }}-mcp-server:{{ .Values.mcp_server.service.port }}/mcp"
+  HPC_MCP_SERVER_URL_FOR_LANGCHAIN: "http://{{ include "agentic-framework.fullname" . }}-hpc-mcp-server:{{ .Values.hpc_mcp_server.service.port }}/mcp"
+  SANDBOX_MCP_SERVER_URL_FOR_LANGCHAIN: "http://{{ include "agentic-framework.fullname" . }}-sandbox-mcp-server:{{ .Values.sandbox_mcp_server.service.port }}/mcp"
+  MCP_SERVER_URL: "http://{{ include "agentic-framework.fullname" . }}-mcp-server:{{ .Values.mcp_server.service.port }}/mcp"
+  HPC_MCP_SERVER_URL: "http://{{ include "agentic-framework.fullname" . }}-hpc-mcp-server:{{ .Values.hpc_mcp_server.service.port }}"
+  SANDBOX_MCP_SERVER_URL: "http://{{ include "agentic-framework.fullname" . }}-sandbox-mcp-server:{{ .Values.sandbox_mcp_server.service.port }}/mcp"
+  ORCHESTRATION_SERVICE_URL: "http://{{ include "agentic-framework.fullname" . }}-orchestration-service:{{ .Values.orchestration_service.service.port }}"
+  LOGGING_LEVEL: "INFO"
+  USE_LOCAL_MCP: "False"
+

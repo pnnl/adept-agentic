@@ -1,0 +1,7 @@
+apiVersion: v2
+name: agentic-framework
+description: A Helm chart for deploying the multi-service Agentic Framework.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+

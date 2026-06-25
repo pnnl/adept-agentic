@@ -1,0 +1,147 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asopb"
+version = "1.0.20260622"
+description = "Agentic Safety and Operations Performance Benchmark - A comprehensive security evaluation framework for AI agents and systems"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "BSD-2-Clause"
+license-files = ["LICENSE"]
+authors = [
+    { name = "ADEPT Team", email = "paul.rigor@pnnl.gov" }
+]
+keywords = [
+    "security",
+    "benchmark",
+    "agentic-ai",
+    "safety",
+    "operations",
+    "evaluation",
+    "framework"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.0",
+    "click>=8.0",
+    "litellm==1.85.0",
+    "rich>=13.0",
+    "jinja2>=3.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+analyzers = [
+    "semgrep>=1.45.0",
+    "bandit>=1.7.5",
+    "pip-audit>=2.6.0",
+]
+observability = [
+    "langfuse>=2.0",
+    "boto3>=1.28.0",
+    "azure-identity>=1.14.0",
+    "azure-monitor-query>=1.2.0",
+    "google-cloud-logging>=3.5.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+    "black>=23.0",
+    "mypy>=1.0",
+]
+all = [
+    "asopb[analyzers]",
+    "asopb[observability]",
+    "asopb[dev]",
+]
+
+[project.scripts]
+asopb = "asopb.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/pnnl/adept-agentic/wiki"
+Repository = "https://github.com/pnnl/adept-agentic"
+Documentation = "https://github.com/pnnl/adept-agentic/wiki/ASOPB-Benchmark"
+Changelog = "https://github.com/pnnl/adept-agentic/blob/main/examples/adept_asopb/CHANGELOG.md"
+Issues = "https://github.com/pnnl/adept-agentic/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+asopb = ["controls.yaml", "py.typed", "skills/*.md"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "C",    # flake8-comprehensions
+    "B",    # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["asopb"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+markers = [
+    "integration: Integration tests (ingester + domain evaluator pipeline)",
+    "e2e: End-to-end tests (full pipeline against fixture data)",
+]

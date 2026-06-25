@@ -1,0 +1,6 @@
+.env
+.env-keycloak-credentials-dir
+.env-keycloak-credentials-dir/*
+logs
+logs/*
+

@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy the HTTP MCP server
+COPY example_weather_http_server.py .
+
+# Install dependencies
+RUN pip install --no-cache-dir mcp httpx fastapi uvicorn
+
+# Expose port (server runs on 8090)
+EXPOSE 8090
+
+# Run the server
+CMD ["python", "example_weather_http_server.py"]

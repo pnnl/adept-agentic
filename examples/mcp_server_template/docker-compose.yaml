@@ -1,0 +1,97 @@
+# Docker Compose for {{DISPLAY_NAME}} MCP Server
+#
+# Provides {{DESCRIPTION}} as external MCP tools.
+# Joins the ADEPT application network for orchestration service discovery.
+#
+# Prerequisites:
+#   - ADEPT core stack running (adept_application_network must exist)
+#
+# Usage:
+#   docker compose up -d --build
+#   curl http://localhost:{{MCP_PORT}}/health
+#   make register-tools
+
+services:
+  {{NAME}}_redis:
+    image: redis:7-alpine
+    container_name: {{NAME}}_redis
+    ports:
+      - "${{{NAME_UPPER}}_REDIS_PORT:-{{REDIS_HOST_PORT}}}:6379"
+    networks:
+      - adept_application_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  {{NAME}}_mcp_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: {{NAME}}-mcp:latest
+    container_name: {{NAME}}_mcp_server
+    ports:
+      - "{{MCP_PORT}}:{{MCP_PORT}}"
+    environment:
+      {{NAME_UPPER}}_PORT: "{{MCP_PORT}}"
+      {{NAME_UPPER}}_REDIS_URL: "redis://{{NAME}}_redis:6379/0"
+      {{NAME_UPPER}}_DEVICE: "${{{NAME_UPPER}}_DEVICE:-cpu}"
+      {{NAME_UPPER}}_RESULTS_DIR: "/app/data/{{NAME}}/results"
+    volumes:
+      # Defense-in-depth: model data is read-only
+      - ../../data/{{NAME}}/models:/app/data/{{NAME}}/models:ro
+      - ../../data/{{NAME}}/reference:/app/data/{{NAME}}/reference:ro
+      # Mutable results directory
+      - ../../data/{{NAME}}/results:/app/data/{{NAME}}/results
+      # External uploaded files (read-only)
+      - ../../data/uploaded_files:/app/data/uploaded_files:ro
+    networks:
+      - adept_application_network
+    # GPU reservation — uncomment or use docker-compose.gpu.yaml overlay
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:{{MCP_PORT}}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      {{NAME}}_redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  {{NAME}}_nginx_proxy:
+    image: nginx:alpine
+    container_name: {{NAME}}_nginx_proxy
+    ports:
+      - "${{{NAME_UPPER}}_HTTP_PORT:-{{PROXY_HTTP_PORT}}}:80"
+      - "${{{NAME_UPPER}}_HTTPS_PORT:-{{PROXY_HTTPS_PORT}}}:443"
+    volumes:
+      - ./{{NAME}}_proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./certs:/etc/nginx/ssl:ro
+    environment:
+      MCP_SERVER_HOST: {{NAME}}_mcp_server
+      MCP_SERVER_PORT: "{{MCP_PORT}}"
+    networks:
+      - adept_application_network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      {{NAME}}_mcp_server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  adept_application_network:
+    external: true

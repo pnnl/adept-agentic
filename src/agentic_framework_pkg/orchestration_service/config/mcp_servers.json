@@ -1,0 +1,65 @@
+{
+  "mcpServers": {
+    "main_mcp_server": {
+      "description": "Main MCP server with scientific tools (BLAST, UniProt, PubChem, websearch, RAG, file management)",
+      "url": "http://mcp_server:8080/mcp",
+      "invocation": {
+        "protocol": "http",
+        "connection": {
+          "url": "http://mcp_server:8080/mcp"
+        }
+      },
+      "acl": {
+        "groups": ["admin", "user", "notebook-users"]
+      }
+    },
+    "sandbox_mcp_server": {
+      "description": "Sandbox MCP server for secure code execution via llm-sandbox",
+      "url": "http://sandbox_mcp_server:8082/mcp", 
+      "invocation": {
+        "protocol": "http",
+        "connection": {
+          "url": "http://sandbox_mcp_server:8082/mcp"
+        }
+      },
+      "acl": {
+        "groups": ["admin", "user", "notebook-users"]
+      }
+    },
+    "hpc_mcp_server": {
+      "description": "HPC MCP server with HPC pipelines (Nextflow, video processing, GitXray)",
+      "url": "http://hpc_mcp_server:8081/mcp",
+      "invocation": {
+        "protocol": "http",
+        "connection": {
+          "url": "http://hpc_mcp_server:8081/mcp"
+        }
+      },
+      "acl": {
+        "groups": ["admin", "user", "notebook-users"]
+      }
+    },
+    "e2e_test_echo_tool": {
+      "description": "A simple echo tool that returns the input text for E2E testing.",
+      "args_schema": {
+        "text": {
+          "type": "string",
+          "description": "The text to echo back."
+        }
+      },
+      "invocation": {
+        "protocol": "stdio",
+        "connection": {
+          "command": [
+            "python3",
+            "-c",
+            "import sys, json; args = json.load(sys.stdin); print(json.dumps({'result': f\"Echo: {args.get('text', 'No text provided')}\"}), flush=True)"
+          ]
+        }
+      },
+      "acl": {
+        "groups": ["admin", "user", "notebook-users"]
+      }
+    }
+  }
+}
